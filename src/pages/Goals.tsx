@@ -1,0 +1,14 @@
+import {useState} from 'react'
+import {useData} from '../context/DataContext'
+export default function Goals(){
+  const{goals,addGoal,updateGoal,deleteGoal}=useData()
+  const[tab,setTab]=useState<'yearly'|'monthly'|'weekly'|'daily'>('yearly')
+  const[show,setShow]=useState(false)
+  const[title,setTitle]=useState('')
+  const[desc,setDesc]=useState('')
+  const list=goals.filter(g=>g.type===tab)
+  const add=()=>{if(!title.trim())return;addGoal({title,type:tab,progress:0,status:'active',description:desc});setTitle('');setDesc('');setShow(false)}
+  return(<div className="card"><div className="card-title"><div style={{display:'flex',gap:8}}>{(['yearly','monthly','weekly','daily'] as const).map(t=>(<button key={t} className={`btn ${tab===t?'btn-primary':'btn-outline'}`} onClick={()=>setTab(t)}>{t==='yearly'?'年度':t==='monthly'?'月度':t==='weekly'?'周度':'日度'}目标</button>))}</div><button className="btn btn-primary" onClick={()=>setShow(true)}>+ 添加目标</button></div>
+    {list.length===0?<div className="empty">暂无目标</div>:list.map(g=>(<div key={g.id} className="card" style={{background:'#f8fafc',marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:600,fontSize:15}}>{g.title}</div>{g.description&&<div style={{fontSize:13,color:'#64748b',marginTop:4}}>{g.description}</div>}</div><div style={{display:'flex',gap:8}}><button className="btn btn-ghost" style={{padding:'4px 8px'}} onClick={()=>updateGoal(g.id,{progress:Math.min(100,g.progress+10)})}>+10%</button><button className="btn btn-ghost" style={{padding:'4px 8px',color:'#ef4444'}} onClick={()=>deleteGoal(g.id)}>删</button></div></div><div style={{marginTop:10,height:8,background:'#e2e8f0',borderRadius:4,overflow:'hidden'}}><div style={{height:'100%',width:`${g.progress}%`,background:g.progress>=100?'#22c55e':'var(--primary)',transition:'width .3s'}}/></div><div style={{fontSize:12,color:'#94a3b8',marginTop:4}}>{g.progress}% {g.status==='completed'&&'✅ 已完成'}</div></div>))}
+    {show&&<div className="modal-overlay" onClick={()=>setShow(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">添加目标</div><div style={{display:'flex',flexDirection:'column',gap:12}}><input className="input" placeholder="目标名称" value={title} onChange={e=>setTitle(e.target.value)} autoFocus/><textarea className="textarea" placeholder="描述（可选）" rows={3} value={desc} onChange={e=>setDesc(e.target.value)}/></div><div className="modal-actions"><button className="btn btn-ghost" onClick={()=>setShow(false)}>取消</button><button className="btn btn-primary" onClick={add}>添加</button></div></div></div>}</div>)
+}
