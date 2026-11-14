@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useData } from '../../context/DataContext'
+import Modal from '../../core/ui/Modal'
 import dayjs from 'dayjs'
 
 export default function TimeStats() {
@@ -139,34 +140,35 @@ export default function TimeStats() {
         ))}
         {dayBlocks.length === 0 && <div className="empty">暂无记录</div>}
       </div>
-      {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">{editing ? '编辑' : '添加'}时间记录</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input className="input" placeholder="做了什么？" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} autoFocus />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12 }}>开始（时）</label>
-                  <input type="number" className="input" min="0" max="23" value={form.start} onChange={e => setForm({ ...form, start: +e.target.value })} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12 }}>结束（时）</label>
-                  <input type="number" className="input" min="1" max="24" value={form.end} onChange={e => setForm({ ...form, end: +e.target.value })} />
-                </div>
-              </div>
-              <select className="select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-                {categories.map(c => <option key={c.id}>{c.name}</option>)}
-              </select>
+      <Modal
+        open={showAdd}
+        title={`${editing ? '编辑' : '添加'}时间记录`}
+        onClose={() => setShowAdd(false)}
+        actions={
+          <>
+            {editing && <button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => { deleteTimeBlock(editing.id); setShowAdd(false) }}>删除</button>}
+            <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>取消</button>
+            <button className="btn btn-primary" onClick={save}>保存</button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input className="input" placeholder="做了什么？" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} autoFocus />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12 }}>开始（时）</label>
+              <input type="number" className="input" min="0" max="23" value={form.start} onChange={e => setForm({ ...form, start: +e.target.value })} />
             </div>
-            <div className="modal-actions">
-              {editing && <button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => { deleteTimeBlock(editing.id); setShowAdd(false) }}>删除</button>}
-              <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>取消</button>
-              <button className="btn btn-primary" onClick={save}>保存</button>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12 }}>结束（时）</label>
+              <input type="number" className="input" min="1" max="24" value={form.end} onChange={e => setForm({ ...form, end: +e.target.value })} />
             </div>
           </div>
+          <select className="select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+            {categories.map(c => <option key={c.id}>{c.name}</option>)}
+          </select>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

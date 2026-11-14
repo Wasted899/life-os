@@ -40,8 +40,8 @@ body::after{content:'';position:fixed;inset:0;background:rgba(240,244,248,var(--
 .input,.select,.textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none}
 .input:focus,.select:focus,.textarea:focus{border-color:var(--primary)}
 .textarea{resize:vertical;min-height:80px}
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000}
-.modal{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;max-height:80vh;overflow-y:auto}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.modal{background:#fff;border-radius:12px;padding:24px;width:90%;max-width:480px;max-height:85vh;overflow-y:auto;overscroll-behavior:contain}
 .modal-title{font-size:18px;font-weight:700;margin-bottom:16px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .empty{text-align:center;padding:40px;color:#94a3b8;font-size:14px}

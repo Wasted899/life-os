@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useData } from '../../context/DataContext'
+import Modal from '../../core/ui/Modal'
 import dayjs from 'dayjs'
 
 export default function Finance() {
@@ -221,31 +222,32 @@ export default function Finance() {
         )}
       </div>
 
-      {show && (
-        <div className="modal-overlay" onClick={() => setShow(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">{editing ? '编辑' : '记一笔'}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className={`btn ${form.type === 'expense' ? 'btn-danger' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => setForm({ ...form, type: 'expense', category: expCats[0]?.name || '餐饮' })}>支出</button>
-                <button className={`btn ${form.type === 'income' ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => setForm({ ...form, type: 'income', category: incCats[0]?.name || '生活费' })}>收入</button>
-              </div>
-              <input className="input" type="number" placeholder="金额" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} autoFocus />
-              <select className="select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{(form.type === 'expense' ? expCats : incCats).map(c => <option key={c.id}>{c.name}</option>)}</select>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select className="select" value={form.account} onChange={e => setForm({ ...form, account: e.target.value })}>{['微信', '支付宝', '现金', '银行卡', '其他'].map(a => <option key={a}>{a}</option>)}</select>
-                <input className="input" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-              </div>
-              <input className="input" placeholder="备注（可选）" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />
-            </div>
-            <div className="modal-actions">
-              {editing && <button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => { deleteTransaction(editing.id); setShow(false) }}>删除</button>}
-              <button className="btn btn-ghost" onClick={() => setShow(false)}>取消</button>
-              <button className="btn btn-primary" onClick={save}>保存</button>
-            </div>
+      <Modal
+        open={show}
+        title={editing ? '编辑' : '记一笔'}
+        onClose={() => setShow(false)}
+        actions={
+          <>
+            {editing && <button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => { deleteTransaction(editing.id); setShow(false) }}>删除</button>}
+            <button className="btn btn-ghost" onClick={() => setShow(false)}>取消</button>
+            <button className="btn btn-primary" onClick={save}>保存</button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className={`btn ${form.type === 'expense' ? 'btn-danger' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => setForm({ ...form, type: 'expense', category: expCats[0]?.name || '餐饮' })}>支出</button>
+            <button className={`btn ${form.type === 'income' ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => setForm({ ...form, type: 'income', category: incCats[0]?.name || '生活费' })}>收入</button>
           </div>
+          <input className="input" type="number" placeholder="金额" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} autoFocus />
+          <select className="select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{(form.type === 'expense' ? expCats : incCats).map(c => <option key={c.id}>{c.name}</option>)}</select>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select className="select" value={form.account} onChange={e => setForm({ ...form, account: e.target.value })}>{['微信', '支付宝', '现金', '银行卡', '其他'].map(a => <option key={a}>{a}</option>)}</select>
+            <input className="input" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+          </div>
+          <input className="input" placeholder="备注（可选）" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} />
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

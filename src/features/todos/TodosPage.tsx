@@ -23,6 +23,7 @@ import ListView from './views/ListView'
 import BoardView from './views/BoardView'
 import TimelineView from './views/TimelineView'
 import CompleteTimeModal from './components/CompleteTimeModal'
+import Modal from '../../core/ui/Modal'
 import {QUADRANT_META} from './types'
 import type {TodoScope,TodoViewMode} from './types'
 import {todayISO} from './date'
@@ -341,35 +342,36 @@ export default function TodosPage() {
         </div>
       </div>
 
-      {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">添加待办</div>
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
-              <input className="input" placeholder="任务内容" value={form.title} onChange={e => setForm({...form,title:e.target.value})} autoFocus/>
-              <div style={{display:'flex',gap:8}}>
-                <select className="select" value={form.quadrant} onChange={e => setForm({...form,quadrant:e.target.value as Quadrant})}>
-                  {QUADRANT_META.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-                <select className="select" value={form.list_id} onChange={e => setForm({...form,list_id:e.target.value})}>
-                  {lists.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}
-                </select>
-              </div>
-              <div style={{display:'flex',gap:8}}>
-                <select className="select" value={form.category_id} onChange={e => setForm({...form,category_id:e.target.value})}>
-                  <option value="">无分类</option>
-                  {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </select>
-                <input className="input" type="time" value={form.due_time} onChange={e => setForm({...form,due_time:e.target.value})} placeholder="时间（可选）"/>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>取消</button>
-              <button className="btn btn-primary" onClick={submitAdd}>添加</button>
-            </div>
+      <Modal
+        open={showAdd}
+        title="添加待办"
+        onClose={() => setShowAdd(false)}
+        actions={
+          <>
+            <button className="btn btn-ghost" onClick={() => setShowAdd(false)}>取消</button>
+            <button className="btn btn-primary" onClick={submitAdd}>添加</button>
+          </>
+        }
+      >
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <input className="input" placeholder="任务内容" value={form.title} onChange={e => setForm({...form,title:e.target.value})} autoFocus/>
+          <div style={{display:'flex',gap:8}}>
+            <select className="select" value={form.quadrant} onChange={e => setForm({...form,quadrant:e.target.value as Quadrant})}>
+              {QUADRANT_META.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <select className="select" value={form.list_id} onChange={e => setForm({...form,list_id:e.target.value})}>
+              {lists.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}
+            </select>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <select className="select" value={form.category_id} onChange={e => setForm({...form,category_id:e.target.value})}>
+              <option value="">无分类</option>
+              {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+            <input className="input" type="time" value={form.due_time} onChange={e => setForm({...form,due_time:e.target.value})} placeholder="时间（可选）"/>
           </div>
         </div>
-      )}
+      </Modal>
 
       {manager === 'list' && (
         <ListManager

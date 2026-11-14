@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import type {Category} from '../../../core/types'
 import {DEFAULT_CATEGORY_COLOR,clampIcon,hasDuplicateCategoryName,normalizeColor,normalizeName} from '../utils'
+import Modal from '../../../core/ui/Modal'
 
 export type CategoryDraft = {name: string; color: string; icon: string}
 
@@ -92,9 +93,13 @@ export default function CategoryManager({categories,counts,onClose,onCreate,onUp
   )
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{width:540,maxHeight:'80vh',overflow:'auto'}} onClick={e => e.stopPropagation()}>
-        <div className="modal-title">分类管理</div>
+    <Modal
+      open
+      title="分类管理"
+      onClose={onClose}
+      style={{width:540}}
+      actions={<button className="btn btn-ghost" onClick={onClose}>关闭</button>}
+    >
 
         {!creating && (
           <button className="btn btn-primary" style={{marginBottom:8}} onClick={() => {setCreating(true);setNotice('')}}>＋ 新建分类</button>
@@ -141,11 +146,6 @@ export default function CategoryManager({categories,counts,onClose,onCreate,onUp
             </div>
           )
         })}
-
-        <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose}>关闭</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -1,6 +1,7 @@
 import {useState} from 'react'
 import type {TodoList} from '../../../core/types'
 import {DEFAULT_LIST_COLOR,DEFAULT_LIST_ICON,clampIcon,normalizeColor} from '../utils'
+import Modal from '../../../core/ui/Modal'
 
 export type ListDraft = {name: string; color: string; icon: string}
 
@@ -95,9 +96,13 @@ export default function ListManager({lists,counts,onClose,onCreate,onUpdate,onDe
   )
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{width:520,maxHeight:'80vh',overflow:'auto'}} onClick={e => e.stopPropagation()}>
-        <div className="modal-title">清单管理</div>
+    <Modal
+      open
+      title="清单管理"
+      onClose={onClose}
+      style={{width:520}}
+      actions={<button className="btn btn-ghost" onClick={onClose}>关闭</button>}
+    >
 
         {!creating && (
           <button className="btn btn-primary" style={{marginBottom:8}} onClick={() => {setCreating(true);setMessage('')}}>＋ 新建清单</button>
@@ -147,11 +152,6 @@ export default function ListManager({lists,counts,onClose,onCreate,onUpdate,onDe
             )}
           </div>
         ))}
-
-        <div className="modal-actions">
-          <button className="btn btn-ghost" onClick={onClose}>关闭</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

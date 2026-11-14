@@ -1,5 +1,6 @@
 import {useState} from 'react'
 import {useData} from '../../context/DataContext'
+import Modal from '../../core/ui/Modal'
 import dayjs from 'dayjs'
 export default function ImportantDays(){
   const{days,addDay,updateDay,deleteDay}=useData()
@@ -12,5 +13,13 @@ export default function ImportantDays(){
   return(<div className="card"><div className="card-title"><div style={{display:'flex',gap:8}}><button className={`btn ${filter==='all'?'btn-primary':'btn-outline'}`} onClick={()=>setFilter('all')}>全部</button><button className={`btn ${filter==='countdown'?'btn-primary':'btn-outline'}`} onClick={()=>setFilter('countdown')}>倒计时</button><button className={`btn ${filter==='countup'?'btn-primary':'btn-outline'}`} onClick={()=>setFilter('countup')}>正计时</button></div><button className="btn btn-primary" onClick={()=>setShow(true)}>+ 添加</button></div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12}}>{list.map(c=>{const d=calc(c);const up=c.type==='countup';return(<div key={c.id} className="card" style={{margin:0,padding:16,background:up?'#f0fdf4':'#eff6ff',borderLeft:`4px solid ${up?'#22c55e':'#2563eb'}`}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}><div><div style={{fontWeight:700,fontSize:15}}>{c.title}</div><div style={{fontSize:12,color:'#64748b',marginTop:2}}>{c.category} · {dayjs(c.date).format('YYYY-MM-DD')}</div></div><button className="btn btn-ghost" style={{padding:'2px 6px',fontSize:12,color:'#ef4444'}} onClick={()=>deleteDay(c.id)}>×</button></div><div style={{textAlign:'center',marginTop:16}}><div style={{fontSize:36,fontWeight:800,color:up?'#22c55e':'#2563eb'}}>{Math.abs(d)}</div><div style={{fontSize:13,color:'#64748b'}}>{up?'已过天数':d>0?'还有天数':'已到'}</div></div><div style={{marginTop:8,textAlign:'center'}}><button className="btn btn-ghost" style={{padding:'2px 8px',fontSize:12}} onClick={()=>updateDay(c.id,{pinned:!c.pinned})}>{c.pinned?'取消置顶':'置顶'}</button></div></div>)})}</div>
     {list.length===0&&<div className="empty">暂无事件</div>}
-    {show&&<div className="modal-overlay" onClick={()=>setShow(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-title">添加重要日子</div><div style={{display:'flex',flexDirection:'column',gap:12}}><div style={{display:'flex',gap:8}}><button className={`btn ${form.type==='countdown'?'btn-primary':'btn-outline'}`} style={{flex:1}} onClick={()=>setForm({...form,type:'countdown'})}>倒计时</button><button className={`btn ${form.type==='countup'?'btn-primary':'btn-outline'}`} style={{flex:1}} onClick={()=>setForm({...form,type:'countup'})}>正计时</button></div><input className="input" placeholder="事件名称" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} autoFocus/><input className="input" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/><input className="input" placeholder="分类，如：考试/生活/学习" value={form.category} onChange={e=>setForm({...form,category:e.target.value})}/></div><div className="modal-actions"><button className="btn btn-ghost" onClick={()=>setShow(false)}>取消</button><button className="btn btn-primary" onClick={add}>添加</button></div></div></div>}</div>)
+    <Modal
+      open={show}
+      title="添加重要日子"
+      onClose={()=>setShow(false)}
+      actions={<><button className="btn btn-ghost" onClick={()=>setShow(false)}>取消</button><button className="btn btn-primary" onClick={add}>添加</button></>}
+    >
+      <div style={{display:'flex',flexDirection:'column',gap:12}}><div style={{display:'flex',gap:8}}><button className={`btn ${form.type==='countdown'?'btn-primary':'btn-outline'}`} style={{flex:1}} onClick={()=>setForm({...form,type:'countdown'})}>倒计时</button><button className={`btn ${form.type==='countup'?'btn-primary':'btn-outline'}`} style={{flex:1}} onClick={()=>setForm({...form,type:'countup'})}>正计时</button></div><input className="input" placeholder="事件名称" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} autoFocus/><input className="input" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/><input className="input" placeholder="分类，如：考试/生活/学习" value={form.category} onChange={e=>setForm({...form,category:e.target.value})}/></div>
+    </Modal>
+  </div>)
 }
