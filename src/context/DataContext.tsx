@@ -9,6 +9,8 @@ import type{CloudUiState,CloudPayload} from '../core/cloudSync'
 import {useAuth} from './AuthContext'
 import {buildHabitTodoPlan,periodRange} from '../features/habits/habitSchedule'
 import type{HabitTodoPlanItem} from '../features/habits/habitSchedule'
+import {BUILTIN_QUOTES} from '../features/quotes/builtinQuotes'
+import {QUOTES_SEEDED_KEY,QUOTES_SEED_VERSION,seedBuiltinQuotes} from '../features/quotes/quotes'
 import dayjs from 'dayjs'
 
 type Ctx={
@@ -25,6 +27,8 @@ type Ctx={
   financeCategories:FinanceCategory[];addFinanceCategory:(c:Omit<FinanceCategory,'id'>)=>void;updateFinanceCategory:(id:string,p:Partial<FinanceCategory>)=>void;deleteFinanceCategory:(id:string)=>void
   accounts:Account[];addAccount:(a:Omit<Account,'id'>)=>void;updateAccount:(id:string,p:Partial<Account>)=>void;deleteAccount:(id:string)=>void
   recurrings:Recurring[];addRecurring:(r:Omit<Recurring,'id'>)=>void;updateRecurring:(id:string,p:Partial<Recurring>)=>void;deleteRecurring:(id:string)=>void
+  /** [M1-19] 本地词库：不进 DomainData / 13 域 / latestRef，云端未接入 */
+  quotes:Quote[]
   syncHabitsToTodos:()=>void
   exportAll:()=>string;importAll:(j:string)=>void;resetAll:()=>void
   uploadLocalToCloud:(skipClear?:boolean,options?:{skipSnapshot?:boolean})=>Promise<void>
@@ -151,6 +155,8 @@ export function DataProvider({children}:{children:ReactNode}){
   const[financeCategories,setFinanceCategories]=useState<FinanceCategory[]>(initial.financeCategories)
   const[accounts,setAccounts]=useState<Account[]>(initial.accounts)
   const[recurrings,setRecurrings]=useState<Recurring[]>(initial.recurrings)
+  // [M1-19] 每日一句词库：本地实体，独立于 13 域与云端
+  const[quotes,setQuotes]=useState<Quote[]>(()=>load<Quote[]>('p_quotes',[]))
 
   const[uploading,setUploading]=useState(false)
   const[cloudLoading,setCloudLoading]=useState(false)
@@ -161,6 +167,19 @@ export function DataProvider({children}:{children:ReactNode}){
   const cloudRef=useRef<CloudPayload>({})
   // 最新的本地 13 域（effect 里不能直接依赖 13 个 state，否则每次输入都会重跑云端检查）
   const latestRef=useRef<DomainData>({} as DomainData)
+  // [M1-19] 内置词库一次性灌入：标记存在即不再灌（用户删光也不回填）；
+  // 词库非空时只按 id 补缺失，不覆盖用户数据。仅挂载执行一次，不参与 13 域保存链路。
+  useEffect(()=>{
+    const seeded=!!load<unknown>(QUOTES_SEEDED_KEY,null)
+    const result=seedBuiltinQuotes(quotes,BUILTIN_QUOTES,seeded)
+    if(result.changed){
+      setQuotes(result.quotes)
+      save('p_quotes',result.quotes)
+    }
+    if(!seeded)save(QUOTES_SEEDED_KEY,QUOTES_SEED_VERSION)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[])
+
   // [M1-5] 登出恢复期间暂停 13 个本地保存 effect，防止把恢复过程写脏
   const persistSuspendedRef=useRef(false)
   // [M1-5] 上一次的用户 id：用来识别"退出登录"这一状态迁移
@@ -584,7 +603,11 @@ export function DataProvider({children}:{children:ReactNode}){
         writeLegacy('p_yearly_reviews',legacy.yearly)
       }
       if(hasKey(source,['themes']))save('p_themes',extras.themes)
-      if(hasKey(source,['quotes']))save('p_quotes',extras.quotes)
+      // [M1-19] quotes 是 DataContext 内的状态，导入后必须同步内存，否则页面仍显示旧词库
+      if(hasKey(source,['quotes'])){
+        save('p_quotes',extras.quotes)
+        setQuotes(extras.quotes)
+      }
       if(hasKey(source,['guides']))save('p_guides',extras.guides)
       if(hasKey(source,['settings','p_disabled','disabledModules'])){
         writeLegacy('p_disabled',extras.settings.disabledModules||[])
@@ -721,6 +744,7 @@ export function DataProvider({children}:{children:ReactNode}){
       financeCategories,addFinanceCategory:fc.add,updateFinanceCategory:fc.update,deleteFinanceCategory:fc.del,
       accounts,addAccount:ac.add,updateAccount:ac.update,deleteAccount:ac.del,
       recurrings,addRecurring:rc.add,updateRecurring:rc.update,deleteRecurring:rc.del,
+      quotes,
       syncHabitsToTodos,exportAll,importAll,resetAll,
       uploadLocalToCloud,testCloudConnection,uploading,cloudLoading,
       cloud,resolveCloud,retryCloud,dismissCloudNotice,createCloudSnapshot,snapshotLocalWorkspace

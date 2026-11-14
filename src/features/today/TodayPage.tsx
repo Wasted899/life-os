@@ -6,7 +6,10 @@ import { useData } from '../../context/DataContext'
 import type { GoalLevel, Habit, Todo } from '../../core/types'
 import CompleteTimeModal from '../todos/components/CompleteTimeModal'
 import { useHabitCheckin } from '../habits/useHabitCheckin'
+import { useDailyQuote } from '../quotes/useDailyQuote'
 import { buildTodayView } from './todayView'
+
+const FALLBACK_QUOTE = '今天也要好好生活。'
 
 const LEVEL_LABELS: Record<GoalLevel, string> = {
   year: '年度',
@@ -81,6 +84,7 @@ export default function Today() {
   )
 
   const { pendingCheck, check, finishCheck, cancelCheck } = useHabitCheckin()
+  const { quote, next, canNext } = useDailyQuote()
   const [pendingTime, setPendingTime] = useState<Todo | null>(null)
 
   /** 与待办页完成逻辑一致：可选记用时；非今日的习惯待办补写对应日期的 check_dates */
@@ -129,6 +133,21 @@ export default function Today() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 每日一句：独立于 buildTodayView，换一条只写 p_daily_quote */}
+      <div className="daily-quote">
+        <div className="daily-quote-body">
+          <div className="daily-quote-text">{quote ? quote.text : FALLBACK_QUOTE}</div>
+          {quote && (quote.author || quote.author_title) && (
+            <div className="daily-quote-meta">
+              —— {quote.author}{quote.author_title ? `（${quote.author_title}）` : ''}
+            </div>
+          )}
+        </div>
+        {canNext && (
+          <button className="btn btn-ghost daily-quote-next" onClick={next}>换一条</button>
+        )}
+      </div>
+
       {/* 第一行：4 个 KPI */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12 }}>
         <Kpi
