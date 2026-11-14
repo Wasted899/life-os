@@ -250,13 +250,18 @@ export default function Goals(){
       >
         {form&&(
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
-            <input
-              className="input"
-              placeholder="目标名称，如：通过英语六级"
-              value={form.title}
-              onChange={e=>setForm({...form,title:e.target.value})}
-              autoFocus
-            />
+            <div>
+              <label style={{fontSize:13,color:'#64748b'}}>目标名称</label>
+              <input
+                className="input"
+                style={{marginTop:6}}
+                placeholder="目标名称，如：通过英语六级"
+                aria-label="目标名称"
+                value={form.title}
+                onChange={e=>setForm({...form,title:e.target.value})}
+                autoFocus
+              />
+            </div>
 
             <div>
               <label style={{fontSize:13,color:'#64748b'}}>层级</label>

@@ -280,7 +280,7 @@ export default function Habits(){
             <label style={{fontSize:13,color:'#64748b'}}>周期目标次数</label>
             <div style={{display:'flex',gap:8,marginTop:6}}>
               {form.frequency === 'monthly_day' ? (
-                <input className="input" value="1 次 / 自然月（固定）" readOnly style={{flex:1,color:'#94a3b8'}}/>
+                <input className="input" value="1 次 / 自然月（固定）" readOnly style={{flex:'1 1 0',minWidth:0,color:'#94a3b8'}}/>
               ) : (
                 <>
                   <input
@@ -290,12 +290,13 @@ export default function Habits(){
                     placeholder="留空 = 按应做天数自动"
                     value={form.target_count}
                     onChange={e=>{setForm({...form,target_count:e.target.value});setFormError('')}}
-                    style={{flex:1}}
+                    style={{flex:'1 1 0',minWidth:0}}
                   />
                   <select
                     className="select"
                     value={form.target_period}
                     onChange={e=>{setForm({...form,target_period:e.target.value as 'week' | 'month'});setFormError('')}}
+                    style={{flex:'0 0 auto',width:'auto'}}
                   >
                     <option value="week">每周</option>
                     <option value="month">每月</option>
