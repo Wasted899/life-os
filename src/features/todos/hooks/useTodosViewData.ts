@@ -1,7 +1,7 @@
 import {useMemo} from 'react'
-import type {Category,Todo,TodoList} from '../../../core/types'
+import type {Category,Quadrant,Todo,TodoList} from '../../../core/types'
 import type {TodoGroupBy,TodoSection} from '../types'
-import {ORPHAN_CATEGORY_KEY,ORPHAN_LIST_KEY,UNCATEGORIZED_KEY} from '../types'
+import {ORPHAN_CATEGORY_KEY,ORPHAN_LIST_KEY,QUADRANT_META,UNCATEGORIZED_KEY} from '../types'
 
 /**
  * 视图选择器（纯函数层）：
@@ -29,6 +29,44 @@ export function sortTodos(todos: Todo[]): Todo[] {
       const timeA = a.todo.due_time || '99:99'
       const timeB = b.todo.due_time || '99:99'
       if (timeA !== timeB) return timeA < timeB ? -1 : 1
+      return a.index - b.index
+    })
+    .map(entry => entry.todo)
+}
+
+/** 看板：固定输出 q1–q4 四列（空列也保留，保证落卡位置稳定） */
+export function buildQuadrantColumns(items: Todo[]): {id: Quadrant; items: Todo[]}[] {
+  return QUADRANT_META.map(meta => ({
+    id: meta.id,
+    items: items.filter(todo => todo.quadrant === meta.id),
+  }))
+}
+
+const padTime = (text: string): string => {
+  const [hour, minute] = text.split(':')
+  if (hour === undefined || minute === undefined) return text
+  return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+}
+
+/** 从 HH:mm 或 ISO 字符串中取 HH:mm，取不到返回空串 */
+export function timeOfValue(value?: string): string {
+  if (!value) return ''
+  const matched = /(\d{1,2}:\d{2})/.exec(value)
+  return matched ? padTime(matched[1]) : ''
+}
+
+/** 时间线取时：start 优先，其次 due_time，最后 end */
+export function timelineTimeOf(todo: Todo): string {
+  return timeOfValue(todo.start) || timeOfValue(todo.due_time) || timeOfValue(todo.end)
+}
+
+/** 时间线：只收有具体时间的待办（规格 §4.11），按时间升序、同时刻保持原顺序 */
+export function buildTimeline(items: Todo[]): Todo[] {
+  return items
+    .map((todo, index) => ({todo, index, time: timelineTimeOf(todo)}))
+    .filter(entry => entry.time !== '')
+    .sort((a, b) => {
+      if (a.time !== b.time) return a.time < b.time ? -1 : 1
       return a.index - b.index
     })
     .map(entry => entry.todo)

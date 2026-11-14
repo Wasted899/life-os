@@ -1,7 +1,7 @@
 import type {Category,Todo,TodoList} from '../../core/types'
 
-/** 视图模式：本批实现 list，board 为旧四象限看板原样迁入（M1-10 重写） */
-export type TodoViewMode = 'list' | 'board'
+/** 视图模式：列表 / 看板（按 quadrant）/ 时间线（只收有具体时间的待办） */
+export type TodoViewMode = 'list' | 'board' | 'timeline'
 
 /** 分组维度：状态 / 清单 / 分类 / 不分组 */
 export type TodoGroupBy = 'status' | 'list' | 'category' | 'none'

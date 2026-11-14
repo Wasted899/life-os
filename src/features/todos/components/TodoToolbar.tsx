@@ -12,6 +12,7 @@ const GROUPS: {id: TodoGroupBy; label: string}[] = [
 const VIEWS: {id: TodoViewMode; label: string}[] = [
   {id: 'list', label: '列表'},
   {id: 'board', label: '看板'},
+  {id: 'timeline', label: '时间线'},
 ]
 
 type Props = {
@@ -60,13 +61,17 @@ export default function TodoToolbar({
           <button className="btn btn-ghost" style={{padding:'4px 8px'}} onClick={() => onDateChange(shiftDate(date, 1))}>后一天</button>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <select className="select" style={{width:110}} value={groupBy} onChange={e => onGroupByChange(e.target.value as TodoGroupBy)}>
-            {GROUPS.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
-          </select>
+          {view === 'list' && (
+            <select className="select" style={{width:110}} value={groupBy} onChange={e => onGroupByChange(e.target.value as TodoGroupBy)}>
+              {GROUPS.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
+            </select>
+          )}
           {VIEWS.map(item => (
             <button key={item.id} className={`btn ${view === item.id ? 'btn-primary' : 'btn-outline'}`} onClick={() => onViewChange(item.id)}>{item.label}</button>
           ))}
-          <button className="btn btn-outline" onClick={onToggleBatch}>{batchMode ? '取消批量' : '批量'}</button>
+          {view === 'list' && (
+            <button className="btn btn-outline" onClick={onToggleBatch}>{batchMode ? '取消批量' : '批量'}</button>
+          )}
           <button className="btn btn-primary" onClick={onAdd}>+ 添加</button>
         </div>
       </div>

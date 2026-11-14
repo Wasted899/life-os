@@ -21,7 +21,9 @@ import {
 } from './utils'
 import ListView from './views/ListView'
 import BoardView from './views/BoardView'
+import TimelineView from './views/TimelineView'
 import {QUADRANT_META} from './types'
+import type {TodoViewMode} from './types'
 
 /**
  * 容器：只做四件事
@@ -78,6 +80,14 @@ export default function TodosPage() {
   const changeList = (id: string) => {
     patch({activeList: id})
     setSelected(new Set())
+  }
+  // 看板/时间线不支持批量选择：切走时退出批量并清空，避免"按钮可见但无效"
+  const changeView = (view: TodoViewMode) => {
+    if (view !== 'list') {
+      setBatchMode(false)
+      setSelected(new Set())
+    }
+    patch({view})
   }
   const toggleBatch = () => {
     setBatchMode(mode => !mode)
@@ -225,7 +235,7 @@ export default function TodosPage() {
             date={date}
             onDateChange={changeDate}
             view={prefs.view}
-            onViewChange={view => patch({view})}
+            onViewChange={changeView}
             groupBy={prefs.groupBy}
             onGroupByChange={groupBy => patch({groupBy})}
             batchMode={batchMode}
@@ -240,7 +250,7 @@ export default function TodosPage() {
             }
           />
 
-          {prefs.view === 'list' ? (
+          {prefs.view === 'list' && (
             <ListView
               sections={sections}
               batchMode={batchMode}
@@ -255,8 +265,17 @@ export default function TodosPage() {
               onTogglePin={togglePin}
               onDelete={removeTodo}
             />
-          ) : (
-            <BoardView items={items} onCycleQuadrant={cycleQuadrant}/>
+          )}
+          {prefs.view === 'board' && (
+            <BoardView
+              items={items}
+              lists={lists}
+              categories={categories}
+              onMoveQuadrant={cycleQuadrant}
+            />
+          )}
+          {prefs.view === 'timeline' && (
+            <TimelineView items={items} lists={lists} categories={categories}/>
           )}
         </div>
       </div>

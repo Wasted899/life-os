@@ -6,7 +6,7 @@ import type {TodoUiPrefs} from '../types'
 /** 只存 UI 偏好：不能进 13 域，否则会被云同步、导出、迁移全部带上 */
 const UI_PREFS_KEY = 'todos:ui'
 
-const VIEWS = ['list', 'board']
+const VIEWS = ['list', 'board', 'timeline']
 const GROUPS = ['status', 'list', 'category', 'none']
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)

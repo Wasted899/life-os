@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {filterTodos,sortTodos,buildSections} from './useTodosViewData'
+import {buildQuadrantColumns,buildSections,buildTimeline,filterTodos,sortTodos,timeOfValue} from './useTodosViewData'
 import type {Category,Todo,TodoList} from '../../../core/types'
 
 const todo = (patch: Record<string, unknown>): Todo => ({
@@ -97,5 +97,43 @@ describe('buildSections', () => {
     expect(sections).toHaveLength(1)
     expect(sections[0].key).toBe('none:all')
     expect(sections[0].count).toBe(2)
+  })
+})
+
+describe('buildQuadrantColumns', () => {
+  it('固定输出 q1–q4 四列，空列保留且列内保持原顺序', () => {
+    const columns = buildQuadrantColumns([
+      todo({id:'a',quadrant:'q1'}),
+      todo({id:'b',quadrant:'q1'}),
+      todo({id:'c',quadrant:'q4'}),
+    ])
+    expect(columns.map(column => column.id)).toEqual(['q1','q2','q3','q4'])
+    expect(columns[0].items.map(item => item.id)).toEqual(['a','b'])
+    expect(columns[1].items).toEqual([])
+    expect(columns[3].items.map(item => item.id)).toEqual(['c'])
+  })
+})
+
+describe('buildTimeline', () => {
+  it('无具体时间的任务不进时间线', () => {
+    const items = [todo({id:'timed',due_time:'09:00'}),todo({id:'plain'})]
+    expect(buildTimeline(items).map(item => item.id)).toEqual(['timed'])
+  })
+
+  it('start/due_time/end 任意有值即入线，按时间升序（start 优先）', () => {
+    const items = [
+      todo({id:'late',due_time:'18:00'}),
+      todo({id:'startOnly',start:'2026-11-14T08:30:00'}),
+      todo({id:'endOnly',end:'2026-11-14T21:00:00'}),
+      todo({id:'early',due_time:'9:00'}),
+      todo({id:'same',due_time:'09:00'}),
+    ]
+    expect(buildTimeline(items).map(item => item.id)).toEqual(['startOnly','early','same','late','endOnly'])
+  })
+
+  it('timeOfValue 兼容 HH:mm 与 ISO 字符串', () => {
+    expect(timeOfValue('9:05')).toBe('09:05')
+    expect(timeOfValue('2026-11-14T14:30:00')).toBe('14:30')
+    expect(timeOfValue('')).toBe('')
   })
 })
