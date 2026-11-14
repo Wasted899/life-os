@@ -26,6 +26,12 @@ export const BACKUP_KEYS = {
 /** 云同步元数据：记录"上一次已处理过的云端状态"，避免同一份云端数据反复弹窗 */
 export const CLOUD_SYNC_KEY = 'planner:cloud:last-sync'
 
+/** 登录前的本地工作区快照：登出时恢复到这份数据，绝不清空（M1-5） */
+export const LOCAL_WORKSPACE_KEY = 'planner:auth:local-workspace'
+
+/** 当前 p_* 缓存属于谁：'local' 或 userId（M1-5 防账号串号） */
+export const ACTIVE_OWNER_KEY = 'planner:auth:owner'
+
 export interface CloudSyncMeta {
   userId: string
   cloudSignature: string
@@ -41,6 +47,21 @@ export function readCloudSyncMeta(): CloudSyncMeta | null {
 
 export function writeCloudSyncMeta(meta: CloudSyncMeta): boolean {
   return saveBackup(CLOUD_SYNC_KEY, meta)
+}
+
+/**
+ * 清除云同步元数据（M1-5）。
+ * 登出时必须调用：否则同一账号重新登录时签名命中会静默跳过云端判定，
+ * 导致本地工作区数据不会与云端对齐。
+ */
+export function clearCloudSyncMeta(): boolean {
+  if (!canUseStorage()) return false
+  try {
+    localStorage.removeItem(CLOUD_SYNC_KEY)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export interface StorageEnvelope<T> {

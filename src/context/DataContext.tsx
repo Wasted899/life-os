@@ -1,5 +1,5 @@
-import {createContext,useContext,useEffect,useState,useCallback,useRef,ReactNode} from 'react'
-import {load,save,uid,readRaw,readLegacy,readLegacyText,writeLegacy,writeLegacyText,backupOnce,saveBackup,readCloudSyncMeta,writeCloudSyncMeta,BACKUP_KEYS} from '../core/storage'
+import {createContext,useContext,useEffect,useLayoutEffect,useState,useCallback,useRef,ReactNode} from 'react'
+import {load,save,uid,readRaw,readLegacy,readLegacyText,writeLegacy,writeLegacyText,backupOnce,saveBackup,readBackup,readCloudSyncMeta,writeCloudSyncMeta,clearCloudSyncMeta,BACKUP_KEYS,LOCAL_WORKSPACE_KEY,ACTIVE_OWNER_KEY} from '../core/storage'
 import {normalizeLocalData,migrateExtras,buildExportPayload,splitLegacyReviews} from '../core/migrate'
 import {sanitizeTodos,sanitizeHabits,sanitizeDays,sanitizeTransactions,sanitizeTimeBlocks,sanitizeGoals,sanitizeMemos,sanitizePomodoros,sanitizeCategories,sanitizeLists,sanitizeFinanceCategories,sanitizeAccounts,sanitizeRecurrings,sanitizeAll} from '../lib/sanitize'
 import type{Todo,TodoList,Category,Goal,Habit,ImportantDay,TimeBlock,Pomodoro,Transaction,Memo,FinanceCategory,Account,Recurring,Theme,Quote,GuideEntry,DomainData,DomainKey} from '../core/types'
@@ -37,6 +37,8 @@ type Ctx={
   dismissCloudNotice:()=>void
   /** 强制把当前云端 13 表快照写入本地备份；失败会抛错（覆盖前必调） */
   createCloudSnapshot:(reason:string)=>Promise<void>
+  /** 登录/注册提交前调用：把当前本地 13 域写入工作区快照（登出时恢复到这里） */
+  snapshotLocalWorkspace:()=>void
 }
 
 const C=createContext<Ctx>({} as Ctx)
@@ -123,8 +125,21 @@ function normalizeCloudRows(key:DomainKey,rows:any[]):any[]{
   })
 }
 
+// ========== [M1-5] 账号切换 / 本地工作区快照 ==========
+/** 登录前的本地工作区快照；缺失或损坏时回落到种子数据（绝不返回空数组） */
+function readLocalWorkspace():DomainData{
+  const saved=readBackup<{savedAt?:string;domains?:DomainData}>(LOCAL_WORKSPACE_KEY)
+  const domains=saved?.domains
+  if(domains&&typeof domains==='object')return sanitizeAll(domains) as DomainData
+  return sanitizeAll({}) as DomainData
+}
+
+/** p_* 缓存当前属于谁：'local' 或 userId */
+const readOwner=()=>readLegacyText(ACTIVE_OWNER_KEY,'local')
+const writeOwner=(value:string)=>writeLegacyText(ACTIVE_OWNER_KEY,value)
+
 export function DataProvider({children}:{children:ReactNode}){
-  const{user}=useAuth()
+  const{user,loading:authLoading,recoveryMode}=useAuth()
   const loggedIn=!!user
 
   // 所有数据state（初始化统一走 readInitialLocalData：备份 → sanitize → migrate）
@@ -152,6 +167,12 @@ export function DataProvider({children}:{children:ReactNode}){
   const cloudRef=useRef<CloudPayload>({})
   // 最新的本地 13 域（effect 里不能直接依赖 13 个 state，否则每次输入都会重跑云端检查）
   const latestRef=useRef<DomainData>({} as DomainData)
+  // [M1-5] 登出恢复期间暂停 13 个本地保存 effect，防止把恢复过程写脏
+  const persistSuspendedRef=useRef(false)
+  // [M1-5] 上一次的用户 id：用来识别"退出登录"这一状态迁移
+  const prevUserIdRef=useRef<string|null>(user?.id||null)
+  // [M1-5] 每次登出恢复 +1，触发解锁 effect
+  const[persistEpoch,setPersistEpoch]=useState(0)
   useEffect(()=>{
     latestRef.current={todos,lists,categories,goals,habits,days,timeBlocks,pomodoros,transactions,memos,financeCategories,accounts,recurrings}
   })
@@ -174,25 +195,76 @@ export function DataProvider({children}:{children:ReactNode}){
     setRecurrings(sanitizeRecurrings(d.recurrings))
   },[])
 
+  /** [M1-5] 登录/注册前调用：把当前本地 13 域写入工作区快照，登出时恢复到这里 */
+  const snapshotLocalWorkspace=useCallback(()=>{
+    saveBackup(LOCAL_WORKSPACE_KEY,{savedAt:new Date().toISOString(),domains:latestRef.current})
+  },[])
+
+  // ========== [M1-5] 登出 / 冷启动：恢复登录前的本地工作区 ==========
+  // 用 useLayoutEffect 保证在 13 个保存 effect 之前执行；四层保护的顺序不可调整。
+  useLayoutEffect(()=>{
+    const currentId=user?.id||null
+    const prevId=prevUserIdRef.current
+    prevUserIdRef.current=currentId
+
+    // 已登录：校正 owner，并释放可能残留的锁（切号后新的 setState 必须能正常保存）
+    if(currentId){
+      persistSuspendedRef.current=false
+      if(readOwner()!==currentId)writeOwner(currentId)
+      return
+    }
+    if(authLoading)return
+
+    // 两种情况需要恢复：刚退出登录；或冷启动发现 p_* 是上一个账号的缓存
+    const loggedOut=!!prevId
+    const foreignOwner=readOwner()!=='local'
+    if(!loggedOut&&!foreignOwner)return
+
+    // 第 1 层：先上锁（必须在任何 setState 之前）
+    persistSuspendedRef.current=true
+
+    // 登出：清掉云端判定状态，避免同一账号重登时被签名静默跳过
+    clearCloudSyncMeta()
+    cloudRef.current={}
+    setCloud(IDLE_CLOUD_STATE)
+    setCloudLoading(false)
+
+    // 第 2 层：恢复工作区快照（缺失回落到种子数据，绝不回落 []）
+    const workspace=readLocalWorkspace()
+    applyDomainData(workspace)
+
+    // 第 3 层：同步直写 13 域，保证内存 / localStorage / owner 三者一致
+    for(const[domain,key]of Object.entries(LS_KEYS))save(key,(workspace as any)[domain])
+
+    writeOwner('local')
+    // 第 4 层：解锁交给下方 persistEpoch effect（必须声明在 13 个保存 effect 之后）
+    setPersistEpoch(n=>n+1)
+  },[user?.id,authLoading,applyDomainData])
+
   // ========== 本地存储自动保存（无论是否登录都保存本地，作为缓存） ==========
-  useEffect(()=>{save(LS_KEYS.todos,todos)},[todos])
-  useEffect(()=>{save(LS_KEYS.lists,lists)},[lists])
-  useEffect(()=>{save(LS_KEYS.categories,categories)},[categories])
-  useEffect(()=>{save(LS_KEYS.goals,goals)},[goals])
-  useEffect(()=>{save(LS_KEYS.habits,habits)},[habits])
-  useEffect(()=>{save(LS_KEYS.days,days)},[days])
-  useEffect(()=>{save(LS_KEYS.timeBlocks,timeBlocks)},[timeBlocks])
-  useEffect(()=>{save(LS_KEYS.pomodoros,pomodoros)},[pomodoros])
-  useEffect(()=>{save(LS_KEYS.transactions,transactions)},[transactions])
-  useEffect(()=>{save(LS_KEYS.memos,memos)},[memos])
-  useEffect(()=>{save(LS_KEYS.financeCategories,financeCategories)},[financeCategories])
-  useEffect(()=>{save(LS_KEYS.accounts,accounts)},[accounts])
-  useEffect(()=>{save(LS_KEYS.recurrings,recurrings)},[recurrings])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.todos,todos)},[todos])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.lists,lists)},[lists])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.categories,categories)},[categories])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.goals,goals)},[goals])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.habits,habits)},[habits])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.days,days)},[days])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.timeBlocks,timeBlocks)},[timeBlocks])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.pomodoros,pomodoros)},[pomodoros])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.transactions,transactions)},[transactions])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.memos,memos)},[memos])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.financeCategories,financeCategories)},[financeCategories])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.accounts,accounts)},[accounts])
+  useEffect(()=>{if(persistSuspendedRef.current)return;save(LS_KEYS.recurrings,recurrings)},[recurrings])
+
+  // [M1-5] 第 4 层：解锁。必须声明在 13 个保存 effect 之后，
+  // 保证同一 commit 中保存 effect 先看到锁，随后才解锁。
+  useEffect(()=>{persistSuspendedRef.current=false},[persistEpoch])
 
   // ========== 登录后检查云端（严格区分"读取失败"与"云端为空"） ==========
   useEffect(()=>{
     const userId=user?.id
-    if(!userId||!isCloudMode||!supabase){
+    if(!userId||!isCloudMode||!supabase||recoveryMode){
+      // [M1-5] 重置密码期间不判定云端：不弹 CloudSyncGate，也不覆盖本地数据
       setCloud(IDLE_CLOUD_STATE)
       return
     }
@@ -252,7 +324,7 @@ export function DataProvider({children}:{children:ReactNode}){
       setCloud({phase:'error',failedTables:[],counts:inspectLocal(latestRef.current).counts,message:e?.message||'云端读取失败'})
     })
     return()=>{cancelled=true}
-  },[user?.id,uploading,reloadToken,applyDomainData])
+  },[user?.id,uploading,reloadToken,recoveryMode,applyDomainData])
 
   /** 强制抓取云端 13 表快照并写入本地备份；不完整或写不进就抛错（覆盖前必调） */
   const createCloudSnapshot=async(reason:string)=>{
@@ -486,6 +558,8 @@ export function DataProvider({children}:{children:ReactNode}){
       log('=== 开始上传 ===')
       const{data:{user:authUser}}=await supabase.auth.getUser()
       if(!authUser)throw new Error('未获取到登录用户信息，请重新登录')
+      // [M1-5] 登出/切号瞬间可能仍有旧上传在跑：账号不一致直接中止，绝不把旧账号数据写进新账号
+      if(authUser.id!==user?.id)throw new Error('登录账号已变化，已中止上传以保护数据')
       log(`当前用户ID: ${authUser.id}`)
       log(`当前用户邮箱: ${authUser.email}`)
 
@@ -589,7 +663,7 @@ export function DataProvider({children}:{children:ReactNode}){
       recurrings,addRecurring:rc.add,updateRecurring:rc.update,deleteRecurring:rc.del,
       syncHabitsToTodos,exportAll,importAll,resetAll,
       uploadLocalToCloud,testCloudConnection,uploading,cloudLoading,
-      cloud,resolveCloud,retryCloud,dismissCloudNotice,createCloudSnapshot
+      cloud,resolveCloud,retryCloud,dismissCloudNotice,createCloudSnapshot,snapshotLocalWorkspace
     }}>{children}</C.Provider>
   )
 }

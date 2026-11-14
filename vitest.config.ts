@@ -1,10 +1,15 @@
 import {defineConfig} from 'vitest/config'
+import react from '@vitejs/plugin-react'
 
-// 单测只跑纯逻辑与网络层，默认 node 环境；
-// 独立配置，避免加载 vite.config.ts 里的 PWA 插件。
+/**
+ * 测试配置：默认 node 环境（cloudSync / supabase 纯逻辑用例）。
+ * 需要 DOM 的用例在文件头用 `// @vitest-environment jsdom` 单独切换，
+ * 这样不会改变既有 node 用例的运行环境。
+ */
 export default defineConfig({
+  plugins:[react()],
   test:{
     environment:'node',
-    include:['src/**/*.test.ts'],
+    include:['src/**/*.test.{ts,tsx}'],
   },
 })

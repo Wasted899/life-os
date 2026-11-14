@@ -77,7 +77,7 @@ export default function Layout({children}:{children:ReactNode}){
           <div className="user-area" ref={menuRef} onClick={()=>setUm(v=>!v)}>
             <div className="user-avatar">{avatar?<img src={avatar} alt=""/>:nick[0]}</div>
             <span style={{fontWeight:600}}>{nick}</span>
-            {um&&(<div className="dropdown"><div className="dropdown-item" onClick={cn}>✏️ 修改昵称</div><div className="dropdown-item" onClick={()=>fileRef.current?.click()}>🖼️ 更换头像</div><div className="dropdown-item" onClick={()=>{window.location.hash='#/settings';setUm(false)}}>⚙️ 设置</div>{user&&<div className="dropdown-item" onClick={()=>{signOut();setUm(false)}}>🚪 退出登录</div>}</div>)}
+            {um&&(<div className="dropdown"><div className="dropdown-item" onClick={cn}>✏️ 修改昵称</div><div className="dropdown-item" onClick={()=>fileRef.current?.click()}>🖼️ 更换头像</div><div className="dropdown-item" onClick={()=>{window.location.hash='#/settings';setUm(false)}}>⚙️ 设置</div>{!user&&<div className="dropdown-item" onClick={()=>{window.location.hash='#/login';setUm(false)}}>🔐 登录 / 云同步</div>}{user&&<div className="dropdown-item" onClick={()=>{signOut().catch(()=>alert('退出失败，请检查网络后重试'));setUm(false)}}>🚪 退出登录</div>}</div>)}
             <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={ha}/>
           </div>
         </header>

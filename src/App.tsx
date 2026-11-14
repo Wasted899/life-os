@@ -1,6 +1,6 @@
-import {lazy,Suspense} from 'react'
+import {lazy,Suspense,useEffect} from 'react'
 import type {ComponentType,LazyExoticComponent,ReactNode} from 'react'
-import {HashRouter,Routes,Route} from 'react-router-dom'
+import {HashRouter,Routes,Route,useNavigate} from 'react-router-dom'
 import Layout from './app/Layout'
 import ErrorBoundary from './app/ErrorBoundary'
 import CloudSyncGate from './app/CloudSyncGate'
@@ -26,8 +26,25 @@ const PAGES:Record<ModuleId,LazyExoticComponent<ComponentType>>={
 }
 
 const LoginPage=lazy(()=>import('./features/auth/LoginPage'))
+const RegisterPage=lazy(()=>import('./features/auth/RegisterPage'))
+const ForgotPasswordPage=lazy(()=>import('./features/auth/ForgotPasswordPage'))
+const ResetPasswordPage=lazy(()=>import('./features/auth/ResetPasswordPage'))
 
 const RouteFallback=()=> <div style={{padding:40,textAlign:'center'}}>加载中...</div>
+
+// 恢复链接：Supabase 解析 hash 后触发 PASSWORD_RECOVERY，这里统一跳到重置页
+function RecoveryRedirect(){
+  const{recoveryMode}=useAuth()
+  const navigate=useNavigate()
+  useEffect(()=>{
+    if(recoveryMode)navigate('/reset-password',{replace:true})
+  },[recoveryMode,navigate])
+  return null
+}
+
+const AuthRoute=({Page}:{Page:LazyExoticComponent<ComponentType>})=> (
+  <Suspense fallback={<RouteFallback/>}><Page/></Suspense>
+)
 
 // 路由守卫：只处理加载状态，不强制登录（用户可选择本地模式）
 function AppGuard({children}:{children:ReactNode}){
@@ -41,9 +58,13 @@ export default function App(){
     <HashRouter>
       {/* 云同步弹窗挂在根层：/login 与主应用都能看到 */}
       <CloudSyncGate/>
+      <RecoveryRedirect/>
       <Routes>
-        {/* 登录页（独立布局，不需要侧边栏） */}
-        <Route path="/login" element={<Suspense fallback={<RouteFallback/>}><LoginPage/></Suspense>}/>
+        {/* 认证页（独立布局，不需要侧边栏） */}
+        <Route path="/login" element={<AuthRoute Page={LoginPage}/>}/>
+        <Route path="/register" element={<AuthRoute Page={RegisterPage}/>}/>
+        <Route path="/forgot-password" element={<AuthRoute Page={ForgotPasswordPage}/>}/>
+        <Route path="/reset-password" element={<AuthRoute Page={ResetPasswordPage}/>}/>
         {/* 主应用（所有页面都可直接访问，不强制登录） */}
         <Route path="/*" element={
           <AppGuard>
