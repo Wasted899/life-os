@@ -23,7 +23,8 @@ import ListView from './views/ListView'
 import BoardView from './views/BoardView'
 import TimelineView from './views/TimelineView'
 import {QUADRANT_META} from './types'
-import type {TodoViewMode} from './types'
+import type {TodoScope,TodoViewMode} from './types'
+import {todayISO} from './date'
 
 /**
  * 容器：只做四件事
@@ -42,6 +43,7 @@ export default function TodosPage() {
   const [selected,setSelected] = useState<Set<string>>(new Set())
   const [showAdd,setShowAdd] = useState(false)
   const [manager,setManager] = useState<ManagerKind | null>(null)
+  const [scheduleDate,setScheduleDate] = useState(dayjs().format('YYYY-MM-DD'))
   const [form,setForm] = useState({
     title:'',
     quadrant:'q2' as Quadrant,
@@ -56,7 +58,8 @@ export default function TodosPage() {
     if (activeList !== prefs.activeList) patch({activeList: 'all'})
   }, [activeList,prefs.activeList,patch])
 
-  const {items,sections} = useTodosViewData({todos,lists,categories,date,activeList,groupBy:prefs.groupBy})
+  const scope: TodoScope = prefs.scope
+  const {items,sections} = useTodosViewData({todos,lists,categories,date,activeList,scope,groupBy:prefs.groupBy})
 
   // 删除确认弹窗展示的"受影响条数"
   const listCounts = useMemo(() => {
@@ -71,14 +74,21 @@ export default function TodosPage() {
     })
     return counts
   }, [todos])
+  const unscheduledCount = useMemo(() => todos.filter(todo => !todo.due_date).length, [todos])
 
   // ---- 选择：切换日期/清单时清空，避免"看不见的选中项被删除" ----
   const changeDate = (next: string) => {
     setDate(next)
     setSelected(new Set())
+    // 从"未排期"回到日期视图
+    if (prefs.scope !== 'date') patch({scope:'date'})
   }
   const changeList = (id: string) => {
-    patch({activeList: id})
+    patch({activeList: id, scope:'date'})
+    setSelected(new Set())
+  }
+  const selectUnscheduled = () => {
+    patch({scope:'unscheduled', activeList:'all'})
     setSelected(new Set())
   }
   // 看板/时间线不支持批量选择：切走时退出批量并清空，避免"按钮可见但无效"
@@ -116,6 +126,8 @@ export default function TodosPage() {
 
   // ---- 单条操作 ----
   const toggleComplete = (todo: Todo) => {
+    // 时长统计归属任务自己的日期；过去/未来日期都不回写到今天
+    const statDate = todo.due_date || date
     if (!todo.completed) {
       // TODO(UI 打磨，M3)：window.prompt 体验差且可能被浏览器拦截，
       // 待替换为标准 Modal（建议落点：components/CompleteTimeModal.tsx，由本函数打开并回填时长）。
@@ -123,13 +135,22 @@ export default function TodosPage() {
       const minutes = window.prompt('本次用了多少分钟？（不填则不记录时间）','')
       if (minutes && !isNaN(+minutes)) {
         const category = categories.find(item => item.id === todo.category_id)
-        addTimeBlock({date,start:dayjs().hour(),end:dayjs().hour() + (+minutes) / 60,title:todo.title,category:category?.name || '学习',source:'todo'})
+        const parts = todo.due_time ? todo.due_time.split(':').map(Number) : []
+        const startHour = parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])
+          ? parts[0] + parts[1] / 60
+          : dayjs().hour()
+        addTimeBlock({date:statDate,start:startHour,end:startHour + (+minutes) / 60,title:todo.title,category:category?.name || '学习',source:'todo'})
       }
     }
     updateTodo(todo.id,{completed: !todo.completed})
-    if (todo.source === 'habit' && todo.habit_id) {
+    // 习惯勾选归属任务日期；今日由 DataContext.updateTodo 统一处理，这里只补非今日，避免重复写入
+    if (todo.source === 'habit' && todo.habit_id && statDate !== todayISO()) {
       const habit = habits.find(item => item.id === todo.habit_id)
-      if (habit && !habit.check_dates.includes(date)) updateHabit(todo.habit_id,{check_dates: [...habit.check_dates,date]})
+      if (habit) {
+        const checked = habit.check_dates.includes(statDate)
+        if (!todo.completed && !checked) updateHabit(todo.habit_id,{check_dates: [...habit.check_dates,statDate]})
+        if (todo.completed && checked) updateHabit(todo.habit_id,{check_dates: habit.check_dates.filter(item => item !== statDate)})
+      }
     }
   }
   const togglePin = (id: string) => {
@@ -144,6 +165,15 @@ export default function TodosPage() {
     if (selected.size === 0) return
     if (!window.confirm(`删除选中的 ${selected.size} 项待办？`)) return
     selected.forEach(id => deleteTodo(id))
+    setSelected(new Set())
+    setBatchMode(false)
+  }
+
+  // 未排期：逐条补日期 / 批量补日期
+  const scheduleTodo = (id: string, next: string) => updateTodo(id,{due_date: next})
+  const batchSchedule = () => {
+    if (!scheduleDate || selected.size === 0) return
+    selected.forEach(id => updateTodo(id,{due_date: scheduleDate}))
     setSelected(new Set())
     setBatchMode(false)
   }
@@ -203,7 +233,8 @@ export default function TodosPage() {
     addTodo({
       title,
       quadrant:form.quadrant,
-      due_date:date,
+      // 日期视图：默认落在当前选中日期；未排期视图：新建后仍保持无日期
+      due_date:scope === 'unscheduled' ? '' : date,
       due_time:form.due_time,
       completed:false,
       list_id:form.list_id,
@@ -222,7 +253,10 @@ export default function TodosPage() {
           lists={lists}
           categories={categories}
           activeList={activeList}
+          scope={scope}
+          unscheduledCount={unscheduledCount}
           onSelectList={changeList}
+          onSelectUnscheduled={selectUnscheduled}
           onOpenManager={setManager}
           collapsed={prefs.collapsed}
           onToggleCollapse={toggleCollapse}
@@ -234,6 +268,7 @@ export default function TodosPage() {
           <TodoToolbar
             date={date}
             onDateChange={changeDate}
+            scope={scope}
             view={prefs.view}
             onViewChange={changeView}
             groupBy={prefs.groupBy}
@@ -246,7 +281,22 @@ export default function TodosPage() {
             onClearSelection={clearSelection}
             onAdd={openAdd}
             batchActions={
-              <button className="btn btn-danger" onClick={batchDelete} disabled={selected.size === 0}>批量删除</button>
+              <>
+                <button className="btn btn-danger" onClick={batchDelete} disabled={selected.size === 0}>批量删除</button>
+                {scope === 'unscheduled' && (
+                  <>
+                    <input
+                      type="date"
+                      className="input"
+                      style={{width:150,padding:'4px 8px'}}
+                      value={scheduleDate}
+                      onChange={e => setScheduleDate(e.target.value)}
+                      aria-label="批量补日期"
+                    />
+                    <button className="btn btn-primary" onClick={batchSchedule} disabled={selected.size === 0 || !scheduleDate}>批量补日期</button>
+                  </>
+                )}
+              </>
             }
           />
 
@@ -264,6 +314,7 @@ export default function TodosPage() {
               onToggleComplete={toggleComplete}
               onTogglePin={togglePin}
               onDelete={removeTodo}
+              onSchedule={scope === 'unscheduled' ? scheduleTodo : undefined}
             />
           )}
           {prefs.view === 'board' && (

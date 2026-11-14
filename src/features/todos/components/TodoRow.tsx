@@ -11,6 +11,8 @@ type Props = {
   onToggleComplete: (todo: Todo) => void
   onTogglePin: (id: string) => void
   onDelete: (id: string) => void
+  /** 可选：未排期视图下逐条补日期；不传则列表行为不变 */
+  onSchedule?: (id: string, date: string) => void
 }
 
 const quadrantMeta = (todo: Todo) => QUADRANT_META.find(item => item.id === todo.quadrant) || QUADRANT_META[3]
@@ -26,6 +28,7 @@ export default function TodoRow({
   onToggleComplete,
   onTogglePin,
   onDelete,
+  onSchedule,
 }: Props) {
   const meta = quadrantMeta(todo)
   return (
@@ -54,6 +57,20 @@ export default function TodoRow({
         {todo.title}
         {todo.due_time && <span style={{fontSize:11,color:'#94a3b8',marginLeft:6}}>{todo.due_time}</span>}
       </span>
+      {onSchedule && (
+        <input
+          type="date"
+          className="input"
+          style={{width:132,fontSize:11,padding:'2px 4px'}}
+          value={todo.due_date || ''}
+          onClick={e => e.stopPropagation()}
+          onChange={e => {
+            if (e.target.value) onSchedule(todo.id, e.target.value)
+          }}
+          aria-label={`为 ${todo.title} 设置日期`}
+          title="补一个日期后，该待办会回到对应日期"
+        />
+      )}
       {listName && <span className="tag" style={{background:'#e0e7ff',color:'#3730a3'}}>{listName}</span>}
       <span className="tag" style={{background:meta.color + '22',color:meta.color}}>{meta.name}</span>
       {categoryName && <span className="tag" style={{background:'#dbeafe',color:'#1e40af'}}>{categoryName}</span>}

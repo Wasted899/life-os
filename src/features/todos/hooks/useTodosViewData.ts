@@ -1,6 +1,6 @@
 import {useMemo} from 'react'
 import type {Category,Quadrant,Todo,TodoList} from '../../../core/types'
-import type {TodoGroupBy,TodoSection} from '../types'
+import type {TodoGroupBy,TodoScope,TodoSection} from '../types'
 import {ORPHAN_CATEGORY_KEY,ORPHAN_LIST_KEY,QUADRANT_META,UNCATEGORIZED_KEY} from '../types'
 
 /**
@@ -9,11 +9,16 @@ import {ORPHAN_CATEGORY_KEY,ORPHAN_LIST_KEY,QUADRANT_META,UNCATEGORIZED_KEY} fro
  * 这里不访问 React、不读写 localStorage、不碰云端，便于单测。
  */
 
-/** 日期 + 清单筛选：无日期任务在每个日期都可见（否则会永久隐身） */
-export function filterTodos(todos: Todo[], date: string, activeList: string): Todo[] {
+/**
+ * 日期 + 清单筛选。
+ * scope='date' 严格只留 due_date === date（规格 §4.8，无日期任务不再每天可见）；
+ * scope='unscheduled' 只留 due_date 为空的未排期任务。
+ */
+export function filterTodos(todos: Todo[], date: string, activeList: string, scope: TodoScope = 'date'): Todo[] {
   return todos.filter(todo => {
     if (activeList !== 'all' && todo.list_id !== activeList) return false
-    return !todo.due_date || todo.due_date === date
+    if (scope === 'unscheduled') return !todo.due_date
+    return todo.due_date === date
   })
 }
 
@@ -152,16 +157,17 @@ export function useTodosViewData(params: {
   categories: Category[]
   date: string
   activeList: string
+  scope: TodoScope
   groupBy: TodoGroupBy
 }) {
-  const {todos, lists, categories, date, activeList, groupBy} = params
+  const {todos, lists, categories, date, activeList, scope, groupBy} = params
   return useMemo(() => {
-    const items = sortTodos(filterTodos(todos, date, activeList))
+    const items = sortTodos(filterTodos(todos, date, activeList, scope))
     const undone = items.filter(todo => !todo.completed).length
     return {
       items,
       sections: buildSections(items, groupBy, lists, categories),
       counts: {visible: items.length, undone, done: items.length - undone},
     }
-  }, [todos, lists, categories, date, activeList, groupBy])
+  }, [todos, lists, categories, date, activeList, scope, groupBy])
 }

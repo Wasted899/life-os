@@ -31,13 +31,22 @@ describe('filterTodos', () => {
     todo({id:'c'}),
   ]
 
-  it('保留当日任务与无日期任务', () => {
-    expect(filterTodos(todos,'2026-11-14','all').map(item => item.id)).toEqual(['a','c'])
+  it('严格只保留 due_date === 选中日期，无日期任务不再每天可见', () => {
+    expect(filterTodos(todos,'2026-11-14','all').map(item => item.id)).toEqual(['a'])
   })
 
-  it('按清单筛选', () => {
-    const data = [todo({id:'a',list_id:'inbox'}),todo({id:'b',list_id:'l2'})]
+  it('未排期范围只返回 due_date 为空的任务', () => {
+    expect(filterTodos(todos,'2026-11-14','all','unscheduled').map(item => item.id)).toEqual(['c'])
+  })
+
+  it('按清单筛选（日期范围内）', () => {
+    const data = [todo({id:'a',due_date:'2026-11-14',list_id:'inbox'}),todo({id:'b',due_date:'2026-11-14',list_id:'l2'})]
     expect(filterTodos(data,'2026-11-14','l2').map(item => item.id)).toEqual(['b'])
+  })
+
+  it('未排期范围仍遵守清单筛选', () => {
+    const data = [todo({id:'a',list_id:'inbox'}),todo({id:'b',list_id:'l2'})]
+    expect(filterTodos(data,'2026-11-14','l2','unscheduled').map(item => item.id)).toEqual(['b'])
   })
 })
 

@@ -17,6 +17,7 @@ export default function ListView({
   onToggleComplete,
   onTogglePin,
   onDelete,
+  onSchedule,
 }: TodoViewProps) {
   const listNames = useMemo(() => new Map(lists.map(list => [list.id, list.name])), [lists])
   const categoryNames = useMemo(() => new Map(categories.map(category => [category.id, category.name])), [categories])
@@ -49,6 +50,7 @@ export default function ListView({
               onToggleComplete={onToggleComplete}
               onTogglePin={onTogglePin}
               onDelete={onDelete}
+              onSchedule={onSchedule}
             />
           ))}
         </TodoGroup>

@@ -415,7 +415,11 @@ export function DataProvider({children}:{children:ReactNode}){
     if(loggedIn&&isCloudMode)updateRow('habits',id,patch)
     if(patch.check_dates){
       const today=dayjs().format('YYYY-MM-DD')
+      // 只有"今日打卡状态"真的变化时才回写今日待办；
+      // 补/取消过去或未来日期的打卡不应连带改动今天的习惯待办
+      const before=habits.find(h=>h.id===id)?.check_dates.includes(today)??false
       const checked=patch.check_dates.includes(today)
+      if(before===checked)return
       setTodos(prev=>prev.map(td=>td.habit_id===id&&td.due_date===today?{...td,completed:checked,completed_at:checked?dayjs().toISOString():undefined}:td))
       // 同步更新云端待办
       if(loggedIn&&isCloudMode){

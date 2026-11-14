@@ -3,6 +3,9 @@ import type {Category,Todo,TodoList} from '../../core/types'
 /** 视图模式：列表 / 看板（按 quadrant）/ 时间线（只收有具体时间的待办） */
 export type TodoViewMode = 'list' | 'board' | 'timeline'
 
+/** 数据范围：按选中日期严格过滤 / 只看未排期（due_date 为空） */
+export type TodoScope = 'date' | 'unscheduled'
+
 /** 分组维度：状态 / 清单 / 分类 / 不分组 */
 export type TodoGroupBy = 'status' | 'list' | 'category' | 'none'
 
@@ -19,6 +22,7 @@ export interface TodoSection {
 /** UI 偏好：只落 `planner:todos:ui`，绝不进入 13 域 */
 export interface TodoUiPrefs {
   view: TodoViewMode
+  scope: TodoScope
   activeList: string
   groupBy: TodoGroupBy
   collapsed: Record<string, boolean>
@@ -26,6 +30,7 @@ export interface TodoUiPrefs {
 
 export const DEFAULT_UI_PREFS: TodoUiPrefs = {
   view: 'list',
+  scope: 'date',
   activeList: 'all',
   groupBy: 'status',
   collapsed: {},
@@ -55,4 +60,6 @@ export type TodoViewProps = {
   onToggleComplete: (todo: Todo) => void
   onTogglePin: (id: string) => void
   onDelete: (id: string) => void
+  /** 未排期视图下逐条补日期（可选，列表视图现有行为不受影响） */
+  onSchedule?: (id: string, date: string) => void
 }

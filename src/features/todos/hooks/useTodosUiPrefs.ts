@@ -22,6 +22,7 @@ function normalizePrefs(raw: unknown): TodoUiPrefs {
   }
   return {
     view: VIEWS.includes(raw.view as string) ? (raw.view as TodoUiPrefs['view']) : DEFAULT_UI_PREFS.view,
+    scope: raw.scope === 'unscheduled' ? 'unscheduled' : 'date',
     activeList: typeof raw.activeList === 'string' && raw.activeList ? raw.activeList : DEFAULT_UI_PREFS.activeList,
     groupBy: GROUPS.includes(raw.groupBy as string) ? (raw.groupBy as TodoUiPrefs['groupBy']) : DEFAULT_UI_PREFS.groupBy,
     collapsed,
