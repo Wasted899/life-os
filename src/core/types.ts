@@ -4,7 +4,8 @@
  * 约束：
  * 1. 本文件不得引入任何运行时依赖，保持依赖图的叶子节点（只允许被 import type）。
  * 2. 批次 0 只做"类型收口 + 预留字段"，新增字段一律可选，避免改动既有页面的创建逻辑。
- * 3. 旧字段名（priority / title / task / cycle 等）保留到批次 1，由 core/migrate.ts 映射后再收紧。
+ * 3. 旧字段名（title / task / cycle 等）保留到批次 1，由 core/migrate.ts 映射后再收紧。
+ * 4. priority 已在批次 2 收口为 quadrant（唯一真源），前端一律只读 quadrant。
  */
 
 // ========== 基础别名 ==========
@@ -52,8 +53,6 @@ export type ImportantDayType = 'countdown' | 'countup'
 export interface Todo {
   id: ID
   title: string
-  /** 旧字段：四象限值（批次 1 映射到 quadrant） */
-  priority: string
   due_date?: ISODate
   due_time?: string
   completed: boolean
@@ -69,7 +68,8 @@ export interface Todo {
   type?: TodoType
   start?: ISODateTime
   end?: ISODateTime
-  quadrant?: Quadrant
+  /** 四象限（唯一真源；旧 priority 已在 migrate / sanitize 收口） */
+  quadrant: Quadrant
   note?: string
 }
 

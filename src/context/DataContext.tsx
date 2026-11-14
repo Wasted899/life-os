@@ -462,7 +462,7 @@ export function DataProvider({children}:{children:ReactNode}){
           if(!habitDue(hb,dt))return
           const exists=next.some(td=>td.habit_id===hb.id&&td.due_date===ds)
           if(!exists){
-            const newTodo:Todo={id:uid(),title:hb.title,priority:'q2',due_date:ds,due_time:'',completed:false,list_id:'inbox',category_id:hb.category_id||'',pinned:false,status:'todo',source:'habit',habit_id:hb.id}
+            const newTodo:Todo={id:uid(),title:hb.title,quadrant:'q2',due_date:ds,due_time:'',completed:false,list_id:'inbox',category_id:hb.category_id||'',pinned:false,status:'todo',source:'habit',habit_id:hb.id}
             next.push(newTodo)
             if(loggedIn&&isCloudMode)insertRow('todos',newTodo)
           }

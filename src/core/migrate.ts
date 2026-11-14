@@ -107,8 +107,7 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: 'id', to: 'id', kind: 'keep' },
     { from: 'title', to: 'title', kind: 'keep' },
     { from: 'name', to: 'title', kind: 'merge', note: 'title 缺失时用 name 兜底（依据 sanitizeTodos，待真实数据验证）' },
-    { from: 'priority', to: 'priority', kind: 'keep', note: '类型层暂时保留，批次2 收口' },
-    { from: 'priority', to: 'quadrant', kind: 'coerce', note: 'q1..q4 直取；非法值兜底 q2（待真实数据验证）' },
+    { from: 'priority', to: 'quadrant', kind: 'coerce', note: '旧字段收口：读取 priority 写入 quadrant，priority 不再输出（批次 2）' },
     { from: 'date', to: 'due_date', kind: 'rename', note: '统一为 YYYY-MM-DD（待真实数据验证）' },
     { from: 'time', to: 'due_time', kind: 'rename', note: '统一为 HH:mm（待真实数据验证）' },
     { from: 'completed', to: 'completed', kind: 'coerce', note: '字符串 "false" 等需转 boolean' },
@@ -303,6 +302,7 @@ export type MigrationIssueCode =
   | 'item-not-object'
   | 'missing-id'
   | 'unknown-key-kept'
+  | 'ref-repaired'
 
 export interface MigrationIssue {
   domain: DomainKey | 'root'
@@ -482,7 +482,6 @@ function normalizeTodo(item: Record<string, unknown>): Todo {
   const title = asText(pick(item.title, item.name)) || '未命名任务'
   out.id = asText(item.id) || uid()
   out.title = title
-  out.priority = asOptionalText(pick(item.priority, item.quadrant)) || 'q2'
   out.quadrant = asQuadrant(pick(item.quadrant, item.priority))
   out.due_date = asDate(pick(item.due_date, item.date))
   out.due_time = asTime(pick(item.due_time, item.time))
@@ -498,6 +497,7 @@ function normalizeTodo(item: Record<string, unknown>): Todo {
   out.start = asOptionalText(item.start)
   out.end = asOptionalText(item.end)
   out.note = asOptionalText(item.note)
+  delete out.priority
   delete out.name
   delete out.date
   delete out.time
@@ -766,6 +766,84 @@ function normalizeDomainItem(
 }
 
 /**
+ * 待办引用完整性修复（纯函数、幂等）。
+ *
+ * 规则：
+ * - list_id 缺失 / 空 → 收集箱（清单不存在时退化到第一个清单）
+ * - list_id 指向不存在的清单 → 收集箱（不新建清单，避免脏数据复活）
+ * - category_id 指向不存在的分类 → 清空（分类是可选标签）
+ * - category_id 实际是清单 id（清单≠分类）→ 清空
+ *
+ * 只在 migrate（冷启动 / 导入）中执行；云端拉取不经过 migrate，
+ * 由列表视图的"未归类"分组兜底展示，不在这里猜测外部数据。
+ * options 用于"局部导入"场景：源里没有 lists/categories 时跳过对应校验，
+ * 避免把合法的 list_id 误判为孤儿。
+ */
+export interface TodoRefRepair {
+  todos: Todo[]
+  changed: number
+  missingList: number
+  orphanList: number
+  orphanCategory: number
+  crossCategory: number
+}
+
+export function repairTodoRefs(
+  todos: Todo[],
+  lists: TodoList[],
+  categories: Category[],
+  options: { checkLists?: boolean; checkCategories?: boolean } = {},
+): TodoRefRepair {
+  const checkLists = options.checkLists !== false
+  const checkCategories = options.checkCategories !== false
+  const listIds = new Set(lists.map(list => list.id))
+  const categoryIds = new Set(categories.map(category => category.id))
+  const fallbackList = listIds.has('inbox') ? 'inbox' : lists[0]?.id || 'inbox'
+
+  let missingList = 0
+  let orphanList = 0
+  let orphanCategory = 0
+  let crossCategory = 0
+
+  const next = todos.map(todo => {
+    let listId = todo.list_id
+    let categoryId = todo.category_id || ''
+
+    if (checkLists) {
+      if (!listId) {
+        listId = fallbackList
+        missingList += 1
+      } else if (!listIds.has(listId)) {
+        listId = fallbackList
+        orphanList += 1
+      }
+    }
+
+    if (checkCategories && categoryId) {
+      if (listIds.has(categoryId) && !categoryIds.has(categoryId)) {
+        categoryId = ''
+        crossCategory += 1
+      } else if (!categoryIds.has(categoryId)) {
+        categoryId = ''
+        orphanCategory += 1
+      }
+    }
+
+    if (listId === todo.list_id && categoryId === (todo.category_id || '')) return todo
+    return { ...todo, list_id: listId, category_id: categoryId }
+  })
+
+  return {
+    todos: next,
+    changed: missingList + orphanList + orphanCategory + crossCategory,
+    missingList,
+    orphanList,
+    orphanCategory,
+    crossCategory,
+  }
+}
+
+/**
  * 主入口：原始对象 → 规范化结果 + 变更/丢弃项报告。
  * 兼容两种输入形态：{ todos, lists, ... } 与 { v, data: { todos, ... } }。
  */
@@ -858,6 +936,23 @@ export function migrate(raw: unknown): MigrationResult {
 
     bag[domain] = output
     stats[domain].output = output.length
+  }
+
+  // 引用完整性：清单 / 分类必须先于待办修复完成（上方循环已全部规范化）
+  if (Array.isArray(source.todos) && source.todos.length > 0) {
+    const repaired = repairTodoRefs(data.todos, data.lists, data.categories, {
+      checkLists: Array.isArray(source.lists),
+      checkCategories: Array.isArray(source.categories),
+    })
+    if (repaired.changed > 0) {
+      data.todos = repaired.todos
+      issues.push({
+        domain: 'todos',
+        path: 'todos[*].list_id/category_id',
+        code: 'ref-repaired',
+        note: `孤儿清单 ${repaired.orphanList}，缺失清单 ${repaired.missingList}，孤儿分类 ${repaired.orphanCategory}，清单误用为分类 ${repaired.crossCategory}`,
+      })
+    }
   }
 
   return {

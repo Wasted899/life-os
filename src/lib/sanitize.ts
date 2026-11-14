@@ -13,13 +13,22 @@
  * 2. 严禁把 `...raw` 放到默认值之后。那会让旧字段原样盖回 sanitize/migrate 的结果，
  *    历史上正是这个顺序导致规范化失效，后续不要再加回来。
  * 3. 本文件不删除旧字段、不做过深类型转换，具体映射由 migrate 负责。
+ *    唯一例外：sanitizeTodos 负责 priority → quadrant 归一（云端拉取不经过 migrate，见该函数注释）。
  */
 import dayjs from 'dayjs'
 const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36)
 const arr=(v:any):any[]=>Array.isArray(v)?v:[]
+const asQuadrant=(v:any):'q1'|'q2'|'q3'|'q4'=>(v==='q1'||v==='q2'||v==='q3'||v==='q4')?v:'q2'
+/**
+ * priority → quadrant 的唯一归一入口。
+ * 放在 sanitize 而不是 migrate：sanitizeAll 是所有数据进入 state 的必经之路
+ * （冷启动/导入 → normalizeLocalData → sanitizeAll；云端拉取/登出恢复 → applyDomainData → sanitizeAll），
+ * 而 migrate 不覆盖云端拉取链路。归一后 priority 不再输出，也不允许再写入。
+ */
 export const sanitizeTodos=(raw:any)=>arr(raw).map((t:any)=>{
   const title=t.title||t.name||'未命名任务'
-  return{...t,id:t.id||uid(),title,priority:t.priority||t.quadrant||'q2',due_date:t.due_date||t.date||null,due_time:t.due_time||t.time||'',completed:!!t.completed,list_id:t.list_id||t.listId||'inbox',category_id:t.category_id||t.categoryId||'',pinned:!!t.pinned,status:t.status||'todo',source:t.source||'todo',habit_id:t.habit_id||t.habitId||null}
+  const{priority,...rest}=t
+  return{...rest,id:t.id||uid(),title,quadrant:asQuadrant(t.quadrant||priority),due_date:t.due_date||t.date||null,due_time:t.due_time||t.time||'',completed:!!t.completed,list_id:t.list_id||t.listId||'inbox',category_id:t.category_id||t.categoryId||'',pinned:!!t.pinned,status:t.status||'todo',source:t.source||'todo',habit_id:t.habit_id||t.habitId||null}
 })
 export const sanitizeHabits=(raw:any)=>arr(raw).map((h:any)=>{
   let frequency=h.frequency||'daily'
