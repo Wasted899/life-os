@@ -3,6 +3,7 @@ import {useData} from '../../context/DataContext'
 import type {Habit} from '../../core/types'
 import Modal from '../../core/ui/Modal'
 import CompleteTimeModal from '../todos/components/CompleteTimeModal'
+import { useHabitCheckin } from './useHabitCheckin'
 import {
   clampMonthlyDay,
   effectiveCustomDays,
@@ -52,12 +53,12 @@ const emptyForm=(categoryId:string):HabitForm=>({
 })
 
 export default function Habits(){
-  const{habits,addHabit,updateHabit,deleteHabit,categories,addTimeBlock}=useData()
+  const{habits,addHabit,updateHabit,deleteHabit,categories}=useData()
   const[show,setShow]=useState(false)
   const[editing,setEditing]=useState<Habit | null>(null)
   const[form,setForm]=useState<HabitForm>(emptyForm(''))
   const[formError,setFormError]=useState('')
-  const[pendingCheck,setPendingCheck]=useState<Habit | null>(null)
+  const{pendingCheck,check,finishCheck,cancelCheck}=useHabitCheckin()
   const today=dayjs().format('YYYY-MM-DD')
 
   const openAdd=()=>{
@@ -129,31 +130,7 @@ export default function Habits(){
   }
 
   // 打卡：未打卡 → 先记用时（可留空）；已打卡 → 直接取消，已写入的时间块保留
-  const check=(habit:Habit)=>{
-    if(habit.check_dates.includes(today)){
-      updateHabit(habit.id,{check_dates:habit.check_dates.filter(date=>date !== today)})
-      return
-    }
-    setPendingCheck(habit)
-  }
-  const finishCheck=(minutes:number | null)=>{
-    const habit=pendingCheck
-    setPendingCheck(null)
-    if(!habit)return
-    if(minutes !== null){
-      const category=categories.find(item=>item.id === habit.category_id)
-      const start=dayjs().hour()
-      addTimeBlock({
-        date:today,
-        start,
-        end:start + minutes / 60,
-        title:habit.title,
-        category:category?.name || '学习',
-        source:'habit',
-      })
-    }
-    updateHabit(habit.id,{check_dates:[...habit.check_dates,today]})
-  }
+  // 逻辑已抽到 useHabitCheckin，与首页「今日」共用
 
   const streak=(dates:string[])=>{
     let count=0
@@ -341,7 +318,7 @@ export default function Habits(){
       <CompleteTimeModal
         open={!!pendingCheck}
         title={pendingCheck?.title || ''}
-        onCancel={()=>setPendingCheck(null)}
+        onCancel={cancelCheck}
         onConfirm={finishCheck}
       />
     </div>

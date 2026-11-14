@@ -1,44 +1,321 @@
-import {useState} from 'react'
-import {useData} from '../../context/DataContext'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
-import {Link} from 'react-router-dom'
-export default function Today(){
-  const{todos,habits,days,transactions,timeBlocks,goals,updateTodo,addTimeBlock,categories,updateHabit}=useData()
-  const[goalFilter,setGoalFilter]=useState<'all'|'yearly'|'monthly'|'weekly'>('all')
-  const today=dayjs().format('YYYY-MM-DD')
-  const todayTodos=todos.filter(t=>(!t.due_date||t.due_date===today)&&!t.completed)
-  const todayHabits=habits.filter(h=>!h.check_dates.includes(today))
-  const upcoming=days.filter(d=>d.type!=='countup'&&dayjs(d.date).diff(dayjs(),'day')>=0).sort((a,b)=>dayjs(a.date).diff(dayjs(b.date))).slice(0,3)
-  const todayExpense=transactions.filter(t=>t.date===today&&t.type==='expense').reduce((s,t)=>s+t.amount,0)
-  const todayFocus=timeBlocks.filter(t=>t.date===today).reduce((s,t)=>s+(t.end-t.start),0)
-  const showGoals=goals.filter(g=>g.status!=='completed'&&(goalFilter==='all'||g.type===goalFilter)).slice(0,5)
-  const toggleTodo=(id:string)=>{const t=todos.find(x=>x.id===id);if(!t)return;const mins=prompt('本次用了多少分钟？（不填则不记录时间）','');if(mins&&!isNaN(+mins)){const cat=categories.find(c=>c.id===t.category_id);addTimeBlock({date:today,start:dayjs().hour(),end:dayjs().hour()+(+mins)/60,title:t.title,category:cat?.name||'学习',source:'todo'})}updateTodo(id,{completed:!t.completed})}
-  const checkHabit=(id:string)=>{const h=habits.find(x=>x.id===id);if(!h)return;if(h.check_dates.includes(today)){updateHabit(id,{check_dates:h.check_dates.filter(d=>d!==today)});return}const mins=prompt(`"${h.title}"打卡！本次用了多少分钟？`,'30');if(mins&&!isNaN(+mins)){const cat=categories.find(x=>x.id===h.category_id);addTimeBlock({date:today,start:dayjs().hour(),end:dayjs().hour()+(+mins)/60,title:h.title,category:cat?.name||'学习',source:'habit'})}updateHabit(id,{check_dates:[...h.check_dates,today]})}
-  const stats=[
-    {label:'今日待办',value:todayTodos.length,icon:'✅',bg:'linear-gradient(135deg,#dbeafe,#bfdbfe)',color:'#1d4ed8'},
-    {label:'待打卡习惯',value:todayHabits.length,icon:'🔥',bg:'linear-gradient(135deg,#fee2e2,#fecaca)',color:'#b91c1c'},
-    {label:'今日专注',value:todayFocus.toFixed(1)+'h',icon:'⏱️',bg:'linear-gradient(135deg,#dcfce7,#bbf7d0)',color:'#15803d'},
-    {label:'今日支出',value:'¥'+todayExpense.toFixed(2),icon:'💰',bg:'linear-gradient(135deg,#fef3c7,#fde68a)',color:'#b45309'},
-  ]
-  return(
-    <div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:14,marginBottom:20}}>
-        {stats.map(s=>(<div key={s.label} className="card" style={{margin:0,padding:18,background:s.bg,border:'none'}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}><div><div style={{fontSize:12,color:s.color,opacity:0.8,fontWeight:500}}>{s.label}</div><div style={{fontSize:30,fontWeight:800,color:s.color,marginTop:6}}>{s.value}</div></div><div style={{fontSize:28,opacity:0.7}}>{s.icon}</div></div></div>))}
+import { useData } from '../../context/DataContext'
+import type { GoalLevel, Habit, Todo } from '../../core/types'
+import CompleteTimeModal from '../todos/components/CompleteTimeModal'
+import { useHabitCheckin } from '../habits/useHabitCheckin'
+import { buildTodayView } from './todayView'
+
+const LEVEL_LABELS: Record<GoalLevel, string> = {
+  year: '年度',
+  month: '月度',
+  week: '周',
+  day: '日',
+}
+
+const EMPTY_TEXT: Record<string, string> = {
+  todos: '今天没有排期的待办',
+  habits: '今天没有需要打卡的习惯',
+  days: '暂无即将到来的日子',
+  goals: '当前周期还没有目标',
+}
+
+const Bar = ({ percent }: { percent: number }) => (
+  <div style={{ height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', flex: 1 }}>
+    <div
+      style={{
+        width: `${Math.min(100, Math.max(0, percent))}%`,
+        height: '100%',
+        background: percent >= 100 ? '#22c55e' : 'var(--primary)',
+        transition: 'width .3s',
+      }}
+    />
+  </div>
+)
+
+const Kpi = ({ label, value, sub, tone, onClick }: {
+  label: string
+  value: string
+  sub: string
+  tone?: 'amber'
+  onClick?: () => void
+}) => (
+  <div
+    onClick={onClick}
+    style={{
+      padding: '14px 16px',
+      borderRadius: 12,
+      border: tone === 'amber' ? '1px dashed #fcd34d' : '1px solid #e2e8f0',
+      background: tone === 'amber' ? '#fffbeb' : 'linear-gradient(135deg,#eff6ff,#dbeafe)',
+      cursor: onClick ? 'pointer' : 'default',
+    }}
+  >
+    <div style={{ fontSize: 12, color: '#64748b' }}>{label}</div>
+    <div style={{ fontSize: 26, fontWeight: 700, color: tone === 'amber' ? '#b45309' : '#1e3a8a', lineHeight: 1.2, marginTop: 2 }}>
+      {value}
+    </div>
+    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{sub}</div>
+  </div>
+)
+
+const CardHead = ({ title, extra }: { title: string; extra?: ReactNode }) => (
+  <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <span>{title}</span>
+    <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 400 }}>{extra}</span>
+  </div>
+)
+
+export default function Today() {
+  const {
+    todos, habits, days, transactions, timeBlocks, goals, categories,
+    updateTodo, updateHabit, addTimeBlock,
+  } = useData()
+  const navigate = useNavigate()
+  const today = dayjs().format('YYYY-MM-DD')
+
+  const view = useMemo(
+    () => buildTodayView({ todos, habits, days, transactions, timeBlocks, goals, today }),
+    [todos, habits, days, transactions, timeBlocks, goals, today],
+  )
+
+  const { pendingCheck, check, finishCheck, cancelCheck } = useHabitCheckin()
+  const [pendingTime, setPendingTime] = useState<Todo | null>(null)
+
+  /** 与待办页完成逻辑一致：可选记用时；非今日的习惯待办补写对应日期的 check_dates */
+  const applyComplete = (todo: Todo, minutes: number | null) => {
+    const statDate = todo.due_date || today
+    if (!todo.completed && minutes !== null) {
+      const category = categories.find(item => item.id === todo.category_id)
+      const parts = todo.due_time ? todo.due_time.split(':').map(Number) : []
+      const startHour = parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])
+        ? parts[0] + parts[1] / 60
+        : dayjs().hour()
+      addTimeBlock({
+        date: statDate,
+        start: startHour,
+        end: startHour + minutes / 60,
+        title: todo.title,
+        category: category?.name || '学习',
+        source: 'todo',
+      })
+    }
+    updateTodo(todo.id, { completed: !todo.completed })
+    // 今日的习惯待办由 DataContext.updateTodo 统一处理，这里只补逾期日期，避免重复写入
+    if (todo.source === 'habit' && todo.habit_id && statDate !== today) {
+      const habit = habits.find(item => item.id === todo.habit_id)
+      if (habit) {
+        const checked = habit.check_dates.includes(statDate)
+        if (!todo.completed && !checked) updateHabit(habit.id, { check_dates: [...habit.check_dates, statDate] })
+        if (todo.completed && checked) updateHabit(habit.id, { check_dates: habit.check_dates.filter(date => date !== statDate) })
+      }
+    }
+  }
+
+  const toggleTodo = (todo: Todo) => {
+    if (!todo.completed) {
+      setPendingTime(todo)
+      return
+    }
+    applyComplete(todo, null)
+  }
+
+  const confirmTodoTime = (minutes: number | null) => {
+    const todo = pendingTime
+    setPendingTime(null)
+    if (todo) applyComplete(todo, minutes)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 第一行：4 个 KPI */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12 }}>
+        <Kpi
+          label="今日待办"
+          value={String(view.todoPending)}
+          sub={view.overdueCount > 0
+            ? `今日完成 ${view.todoDoneToday} · 逾期 ${view.overdueCount}`
+            : `今日完成 ${view.todoDoneToday}`}
+        />
+        <Kpi label="今日习惯" value={`${view.habitDueDone}/${view.habitDueTotal}`} sub="今天该做" />
+        <Kpi label="今日专注" value={`${view.focusHours.toFixed(1)}h`} sub="时间块合计" />
+        <Kpi
+          label="今日支出"
+          value={`¥${view.finance.expense.toFixed(2)}`}
+          sub={`${view.finance.count} 笔 · 记账只读`}
+          tone="amber"
+          onClick={() => navigate('/finance')}
+        />
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-        <div>
-          <div className="card"><div className="card-title"><span>📋 今日待办</span><Link to="/todos" className="btn btn-ghost" style={{fontSize:12,padding:'4px 10px'}}>全部 →</Link></div>
-            {todayTodos.length===0?<div className="empty">🎉 今日无待办</div>:todayTodos.slice(0,8).map(t=>(<div key={t.id} style={{padding:'10px 0',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:10}}><input type="checkbox" checked={t.completed} onChange={()=>toggleTodo(t.id)} style={{width:18,height:18,cursor:'pointer'}}/><span style={{width:8,height:8,borderRadius:'50%',background:t.quadrant==='q1'?'#ef4444':t.quadrant==='q2'?'#f59e0b':t.quadrant==='q3'?'#3b82f6':'#94a3b8',flexShrink:0}}/><span style={{flex:1,fontSize:14}}>{t.title}</span>{t.source==='habit'&&<span className="tag" style={{background:'#fef3c7',color:'#92400e',fontSize:11}}>习惯</span>}</div>))}{todayTodos.length>8&&<div style={{textAlign:'center',padding:8,fontSize:12,color:'#94a3b8'}}>还有{todayTodos.length-8}项</div>}</div>
-          <div className="card"><div className="card-title"><span>🎯 目标进度</span><div style={{display:'flex',gap:4}}>{(['all','yearly','monthly','weekly'] as const).map(f=>(<button key={f} className={`btn ${goalFilter===f?'btn-primary':'btn-ghost'}`} style={{padding:'3px 8px',fontSize:11}} onClick={()=>setGoalFilter(f)}>{f==='all'?'全部':f==='yearly'?'年度':f==='monthly'?'月度':'周度'}</button>))}</div></div>
-            {showGoals.length===0?<div className="empty">暂无进行中目标</div>:showGoals.map(g=>(<div key={g.id} style={{marginBottom:12}}><div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}><span>{g.title}</span><span style={{color:'#64748b'}}>{g.progress}%</span></div><div style={{height:6,background:'#f1f5f9',borderRadius:3,overflow:'hidden'}}><div style={{height:'100%',width:`${g.progress}%`,background:'var(--primary)',transition:'width .3s'}}/></div></div>))}</div>
+
+      {/* 第二行：待办 + 习惯 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', gap: 12 }}>
+        <div className="card">
+          <CardHead title="今日待办" extra={<Link to="/todos">全部待办 →</Link>} />
+          {view.todos.length === 0 ? (
+            <div className="empty" style={{ padding: '18px 0' }}>
+              {EMPTY_TEXT.todos} <Link to="/todos">去安排 →</Link>
+            </div>
+          ) : (
+            view.todos.map(({ todo, overdue }) => (
+              <div
+                key={todo.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '9px 0', borderTop: '1px solid #f1f5f9',
+                }}
+              >
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: 0, width: 22, height: 22, display: 'grid', placeItems: 'center' }}
+                  title="标记完成"
+                  onClick={() => toggleTodo(todo)}
+                >
+                  <span style={{ width: 15, height: 15, border: '1.5px solid #94a3b8', borderRadius: 4, display: 'block' }} />
+                </button>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {todo.title}
+                </span>
+                {overdue && (
+                  <span className="tag" style={{ background: '#fee2e2', color: '#b91c1c' }}>逾期</span>
+                )}
+                {todo.due_time && <span style={{ fontSize: 12, color: '#64748b' }}>{todo.due_time}</span>}
+              </div>
+            ))
+          )}
+          {view.todoRemaining > 0 && (
+            <div style={{ fontSize: 12, color: '#94a3b8', paddingTop: 8 }}>还有 {view.todoRemaining} 条</div>
+          )}
         </div>
-        <div>
-          <div className="card" style={{marginBottom:16}}><div className="card-title"><span>⏰ 即将到来</span><Link to="/days" className="btn btn-ghost" style={{fontSize:12,padding:'4px 10px'}}>全部 →</Link></div>
-            {upcoming.length===0?<div className="empty">暂无即将到来的事件</div>:upcoming.map(c=>{const d=dayjs(c.date).diff(dayjs(),'day')+1;return(<div key={c.id} style={{padding:'10px 0',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:500,fontSize:14}}>{c.title}</div><div style={{fontSize:11,color:'#94a3b8'}}>{dayjs(c.date).format('M月D日')} · {c.category}</div></div><div style={{textAlign:'right'}}><div style={{fontSize:22,fontWeight:800,color:d<=7?'#ef4444':'#2563eb'}}>{d}</div><div style={{fontSize:11,color:'#94a3b8'}}>天后</div></div></div>)})}</div>
-          <div className="card"><div className="card-title"><span>🔥 今日习惯</span><Link to="/habits" className="btn btn-ghost" style={{fontSize:12,padding:'4px 10px'}}>全部 →</Link></div>
-            {todayHabits.length===0?<div className="empty">🎉 今日习惯全部完成</div>:todayHabits.slice(0,5).map(h=>(<div key={h.id} style={{padding:'8px 0',borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:8}}><button onClick={()=>checkHabit(h.id)} style={{width:28,height:28,borderRadius:'50%',border:'2px solid #cbd5e1',background:'transparent',cursor:'pointer',flexShrink:0}}/><span style={{flex:1,fontSize:14}}>{h.title}</span><span style={{fontSize:11,color:'#94a3b8'}}>{h.frequency==='daily'?'每天':h.frequency==='weekdays'?'工作日':h.frequency==='weekends'?'周末':'自定义'}</span></div>))}</div>
+
+        <div className="card">
+          <CardHead title="今日习惯" extra={<Link to="/habits">全部习惯 →</Link>} />
+          {view.habits.length === 0 ? (
+            <div className="empty" style={{ padding: '18px 0' }}>{EMPTY_TEXT.habits}</div>
+          ) : (
+            view.habits.map(({ habit, checked, progress }) => (
+              <div
+                key={habit.id}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderTop: '1px solid #f1f5f9' }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{habit.title}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    <Bar percent={progress.total ? (progress.done / progress.total) * 100 : 0} />
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>{progress.done}/{progress.total}</span>
+                  </div>
+                </div>
+                <button
+                  className={`btn ${checked ? 'btn-ghost' : 'btn-primary'}`}
+                  style={{ padding: '4px 10px', fontSize: 12 }}
+                  onClick={() => check(habit)}
+                >
+                  {checked ? '已打卡' : '打卡'}
+                </button>
+              </div>
+            ))
+          )}
+          {view.habitRemaining > 0 && (
+            <div style={{ fontSize: 12, color: '#94a3b8', paddingTop: 8 }}>还有 {view.habitRemaining} 个</div>
+          )}
         </div>
       </div>
+
+      {/* 第三行：重要日子 / 目标摘要 / 记账摘要 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12 }}>
+        <div className="card">
+          <CardHead title="重要日子" extra={<Link to="/days">全部 →</Link>} />
+          {view.days.length === 0 ? (
+            <div className="empty" style={{ padding: '18px 0' }}>{EMPTY_TEXT.days}</div>
+          ) : (
+            view.days.map(({ day, daysLeft }) => (
+              <div key={day.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderTop: '1px solid #f1f5f9' }}>
+                <span style={{ flex: 1, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{day.title}</span>
+                <span style={{ fontSize: 12, color: '#64748b' }}>{day.date}</span>
+                <span className="tag" style={{ background: '#e0e7ff', color: '#3730a3' }}>
+                  {daysLeft === 0 ? '今天' : daysLeft === 1 ? '明天' : `${daysLeft} 天后`}
+                </span>
+              </div>
+            ))
+          )}
+          {view.daysRemaining > 0 && (
+            <div style={{ fontSize: 12, color: '#94a3b8', paddingTop: 8 }}>还有 {view.daysRemaining} 个</div>
+          )}
+        </div>
+
+        <div className="card">
+          <CardHead
+            title="目标摘要"
+            extra={<Link to="/goals">全部目标 →</Link>}
+          />
+          {view.goals.length === 0 ? (
+            <div className="empty" style={{ padding: '18px 0' }}>
+              {EMPTY_TEXT.goals} <Link to="/goals">去设定 →</Link>
+            </div>
+          ) : (
+            view.goals.map(({ goal, level, percent }) => (
+              <div key={goal.id} style={{ padding: '9px 0', borderTop: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="tag" style={{ background: '#f1f5f9', color: '#475569' }}>{LEVEL_LABELS[level]}</span>
+                  <span style={{ flex: 1, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{goal.title}</span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{percent}%</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', marginTop: 6 }}>
+                  <Bar percent={percent} />
+                </div>
+              </div>
+            ))
+          )}
+          {view.goalRemaining > 0 && (
+            <div style={{ fontSize: 12, color: '#94a3b8', paddingTop: 8 }}>还有 {view.goalRemaining} 个</div>
+          )}
+        </div>
+
+        <div
+          onClick={() => navigate('/finance')}
+          style={{
+            padding: 16,
+            borderRadius: 12,
+            border: '1px dashed #fcd34d',
+            background: '#fffbeb',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontWeight: 600, color: '#92400e' }}>记账摘要</span>
+            <span className="tag" style={{ background: '#fef3c7', color: '#92400e' }}>只读</span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#b45309' }}>去记账 →</span>
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#b45309', marginTop: 8 }}>
+            ¥{view.finance.expense.toFixed(2)}
+          </div>
+          <div style={{ fontSize: 12, color: '#a16207', marginTop: 2 }}>
+            今日支出 · {view.finance.count} 笔
+          </div>
+          <div style={{ fontSize: 13, color: '#78350f', marginTop: 10 }}>
+            {view.finance.topCategory
+              ? `最大分类：${view.finance.topCategory} ¥${view.finance.topCategoryAmount.toFixed(2)}`
+              : '今天还没有支出记录'}
+          </div>
+          <div style={{ fontSize: 12, color: '#a16207', marginTop: 4 }}>
+            收入 ¥{view.finance.income.toFixed(2)}
+          </div>
+        </div>
+      </div>
+
+      <CompleteTimeModal
+        open={!!pendingTime}
+        title={pendingTime?.title || ''}
+        onCancel={() => setPendingTime(null)}
+        onConfirm={confirmTodoTime}
+      />
+      <CompleteTimeModal
+        open={!!pendingCheck}
+        title={pendingCheck?.title || ''}
+        onCancel={cancelCheck}
+        onConfirm={finishCheck}
+      />
     </div>
   )
 }
