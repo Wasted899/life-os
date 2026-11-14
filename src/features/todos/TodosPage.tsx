@@ -22,6 +22,7 @@ import {
 import ListView from './views/ListView'
 import BoardView from './views/BoardView'
 import TimelineView from './views/TimelineView'
+import CompleteTimeModal from './components/CompleteTimeModal'
 import {QUADRANT_META} from './types'
 import type {TodoScope,TodoViewMode} from './types'
 import {todayISO} from './date'
@@ -42,6 +43,7 @@ export default function TodosPage() {
   const [batchMode,setBatchMode] = useState(false)
   const [selected,setSelected] = useState<Set<string>>(new Set())
   const [showAdd,setShowAdd] = useState(false)
+  const [pendingTime,setPendingTime] = useState<Todo|null>(null)
   const [manager,setManager] = useState<ManagerKind | null>(null)
   const [scheduleDate,setScheduleDate] = useState(dayjs().format('YYYY-MM-DD'))
   const [form,setForm] = useState({
@@ -125,22 +127,17 @@ export default function TodosPage() {
   const clearSelection = () => setSelected(new Set())
 
   // ---- 单条操作 ----
-  const toggleComplete = (todo: Todo) => {
+  /** 真正落库：minutes 为 null 表示不记录时间块 */
+  const applyComplete = (todo: Todo, minutes: number | null) => {
     // 时长统计归属任务自己的日期；过去/未来日期都不回写到今天
     const statDate = todo.due_date || date
-    if (!todo.completed) {
-      // TODO(UI 打磨，M3)：window.prompt 体验差且可能被浏览器拦截，
-      // 待替换为标准 Modal（建议落点：components/CompleteTimeModal.tsx，由本函数打开并回填时长）。
-      // 本批保持旧页行为不变，未引入新交互。
-      const minutes = window.prompt('本次用了多少分钟？（不填则不记录时间）','')
-      if (minutes && !isNaN(+minutes)) {
-        const category = categories.find(item => item.id === todo.category_id)
-        const parts = todo.due_time ? todo.due_time.split(':').map(Number) : []
-        const startHour = parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])
-          ? parts[0] + parts[1] / 60
-          : dayjs().hour()
-        addTimeBlock({date:statDate,start:startHour,end:startHour + (+minutes) / 60,title:todo.title,category:category?.name || '学习',source:'todo'})
-      }
+    if (!todo.completed && minutes !== null) {
+      const category = categories.find(item => item.id === todo.category_id)
+      const parts = todo.due_time ? todo.due_time.split(':').map(Number) : []
+      const startHour = parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])
+        ? parts[0] + parts[1] / 60
+        : dayjs().hour()
+      addTimeBlock({date:statDate,start:startHour,end:startHour + minutes / 60,title:todo.title,category:category?.name || '学习',source:'todo'})
     }
     updateTodo(todo.id,{completed: !todo.completed})
     // 习惯勾选归属任务日期；今日由 DataContext.updateTodo 统一处理，这里只补非今日，避免重复写入
@@ -152,6 +149,19 @@ export default function TodosPage() {
         if (todo.completed && checked) updateHabit(todo.habit_id,{check_dates: habit.check_dates.filter(item => item !== statDate)})
       }
     }
+  }
+  const toggleComplete = (todo: Todo) => {
+    // 勾选完成时先弹用时 Modal；取消勾选直接落库
+    if (!todo.completed) {
+      setPendingTime(todo)
+      return
+    }
+    applyComplete(todo, null)
+  }
+  const confirmCompleteTime = (minutes: number | null) => {
+    const todo = pendingTime
+    setPendingTime(null)
+    if (todo) applyComplete(todo, minutes)
   }
   const togglePin = (id: string) => {
     const todo = todos.find(item => item.id === id)
@@ -381,6 +391,13 @@ export default function TodosPage() {
           onDelete={removeCategory}
         />
       )}
+
+      <CompleteTimeModal
+        open={!!pendingTime}
+        title={pendingTime?.title || ''}
+        onCancel={() => setPendingTime(null)}
+        onConfirm={confirmCompleteTime}
+      />
     </div>
   )
 }

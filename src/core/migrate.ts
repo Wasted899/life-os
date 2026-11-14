@@ -171,9 +171,9 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: '*', to: 'check_dates', kind: 'default', defaultValue: [] },
     { from: 'categoryId', to: 'category_id', kind: 'merge' },
     { from: '*', to: 'category_id', kind: 'default', defaultValue: '' },
-    { from: '*', to: 'target_count', kind: 'default', note: '旧结构无来源；待 D4 决策，暂不设默认值' },
-    { from: '*', to: 'target_period', kind: 'default', note: '旧结构无来源；待 D4 决策' },
-    { from: '*', to: 'monthly_day', kind: 'default', note: '旧结构无来源（旧 frequency 无 monthly_day）' },
+    { from: '*', to: 'target_count', kind: 'default', note: 'M1-13：仅接受正整数；0/负数/NaN/非数字回落 undefined（自动分母），monthly_day 强制 1' },
+    { from: '*', to: 'target_period', kind: 'default', note: 'M1-13：仅接受 week|month；monthly_day 强制 month' },
+    { from: '*', to: 'monthly_day', kind: 'default', note: 'M1-13：monthly_day ?? day_of_month ?? 1，取值 1-31' },
     { from: '*', to: 'day_of_month', kind: 'default', note: '规格预留字段，旧结构无来源' },
   ],
   days: [
@@ -569,10 +569,28 @@ function normalizeHabit(item: Record<string, unknown>): Habit {
   out.custom_days = out.frequency === 'custom' && customDays.length === 0 ? [1] : customDays
   out.check_dates = normalizeStringArray(item.check_dates)
   out.category_id = asOptionalText(pick(item.category_id, item.categoryId)) || ''
-  if (hasValue(item.target_count)) out.target_count = asNum(item.target_count, 0)
-  if (hasValue(item.target_period)) out.target_period = asText(item.target_period)
-  if (hasValue(item.monthly_day)) out.monthly_day = Math.min(31, Math.max(1, asNum(item.monthly_day, 1)))
+  // M1-13：目标次数只接受正整数；0 / 负数 / NaN / 非数字字符串一律视为未设置（undefined），
+  // 由 habitSchedule.maxTargetFor 回落到"该频率应做天数"，旧习惯行为保持不变。
+  const targetCount = Number(item.target_count)
+  if (hasValue(item.target_count) && Number.isFinite(targetCount) && targetCount >= 1) {
+    out.target_count = Math.floor(targetCount)
+  } else {
+    delete out.target_count
+  }
+  // 周期只接受 week | month，其它脏值回落到 undefined（按周统计）
+  const targetPeriod = asText(item.target_period)
+  if (targetPeriod === 'week' || targetPeriod === 'month') out.target_period = targetPeriod
+  else delete out.target_period
+  // monthly_day ?? day_of_month ?? 1
+  const monthlyDay = pick(item.monthly_day, item.day_of_month)
+  if (hasValue(monthlyDay)) out.monthly_day = Math.min(31, Math.max(1, asNum(monthlyDay, 1)))
+  else if (out.frequency === 'monthly_day') out.monthly_day = 1
   if (hasValue(item.day_of_month)) out.day_of_month = Math.min(31, Math.max(1, asNum(item.day_of_month, 1)))
+  // monthly_day 语义固定：自然月统计、目标 1 次
+  if (out.frequency === 'monthly_day') {
+    out.target_period = 'month'
+    out.target_count = 1
+  }
   delete out.customDays
   delete out.categoryId
   return out as unknown as Habit

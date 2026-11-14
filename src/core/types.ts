@@ -112,16 +112,23 @@ export interface Habit {
   id: ID
   /** 旧字段：批次 1 映射到 name */
   title: string
-  /** 旧字段：daily / weekdays / weekends / custom */
+  /** 旧字段：daily / weekdays / weekends / custom / monthly_day */
   frequency: string
   custom_days?: number[]
   check_dates: ISODate[]
   category_id?: ID
   // ---- 批次 0 预留 ----
   name?: string
+  /**
+   * 周期目标次数（进度条总格数）。与 frequency 正交：
+   * - 正整数：按 target_period 统计
+   * - 缺失 / 非法：自动回落到该频率在本周期应做的天数（旧数据行为不变）
+   * - frequency='monthly_day' 时固定为 1
+   */
   target_count?: number
+  /** 目标周期：week（周一~周日）/ month（自然月）；monthly_day 强制 month */
   target_period?: TargetPeriod
-  /** 每月某日（1-31），frequency = 'monthly_day' 时生效 */
+  /** 每月某日（1-31），frequency = 'monthly_day' 时生效：强制自然月、目标 1 次 */
   monthly_day?: number
   day_of_month?: number
 }

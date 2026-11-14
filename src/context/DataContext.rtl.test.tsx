@@ -42,13 +42,18 @@ vi.mock('../lib/supabase',()=>({
 }))
 
 const {DataProvider,useData}=await import('./DataContext')
+const {buildHabitTodoPlan}=await import('../features/habits/habitSchedule')
+const dayjs=(await import('dayjs')).default
 
 type Ctx=ReturnType<typeof useData>
 
 /** 探针：把最新的 context 暴露给用例（不参与任何真实渲染逻辑） */
 let ctx:Ctx
+/** DataProvider 的渲染次数（用于观测是否出现死循环） */
+let renderCount=0
 function Probe(){
   ctx=useData()
+  renderCount+=1
   return null
 }
 const tree=():ReactNode=> <DataProvider><Probe/></DataProvider>
@@ -191,5 +196,61 @@ describe('DataContext React 层保护',()=>{
     expect(ctx.cloud.message).toBe('network down')
     expect(snapshotDomains()).toBe(before)
     consoleError.mockRestore()
+  })
+})
+
+describe('DataContext 习惯排期（M1-13）',()=>{
+  it('频率变更只重算一次，不产生重复待办，保留已完成',async()=>{
+    render(tree())
+    act(()=>{ctx.addHabit({title:'阅读',frequency:'daily',check_dates:[]} as any)})
+    const habitId=ctx.habits[0].id
+    const today=dayjs().format('YYYY-MM-DD')
+
+    const expectedDaily=buildHabitTodoPlan(ctx.habits,today,6).length
+    await waitFor(()=>expect(ctx.todos.filter(t=>t.habit_id===habitId)).toHaveLength(expectedDaily))
+
+    // 观测写入次数：p_todos 的 persist effect 依赖 [todos]，一次 commit 最多写一次
+    const setItemSpy=vi.spyOn(Storage.prototype,'setItem')
+    const todoWrites=()=>setItemSpy.mock.calls.filter(([key])=>key==='planner:p_todos').length
+
+    // 完成一条，用于验证重算时不会被删
+    const first=ctx.todos.find(t=>t.habit_id===habitId)!
+    act(()=>ctx.updateTodo(first.id,{completed:true}))
+
+    // 打卡：只改 check_dates，不改变待办 id 集合
+    const idsBefore=ctx.todos.filter(t=>t.habit_id===habitId).map(t=>t.id).sort()
+    renderCount=0
+    setItemSpy.mockClear()
+    act(()=>ctx.updateHabit(habitId,{check_dates:[today]}))
+    await act(async()=>{})
+    expect(ctx.todos.filter(t=>t.habit_id===habitId).map(t=>t.id).sort()).toEqual(idsBefore)
+    const checkRenders=renderCount
+    const checkWrites=todoWrites()
+
+    // 频率改为工作日：旧未完成作废，已完成保留，key 无重复
+    renderCount=0
+    setItemSpy.mockClear()
+    act(()=>ctx.updateHabit(habitId,{frequency:'weekdays'}))
+    await act(async()=>{})
+    const after=ctx.todos.filter(t=>t.habit_id===habitId)
+    const expectedWeekday=buildHabitTodoPlan(ctx.habits,today,6)
+    const weekdayKeys=new Set(expectedWeekday.map(item=>item.dueDate))
+
+    expect(after.some(todo=>todo.id===first.id&&todo.completed)).toBe(true)
+    expect(new Set(after.map(todo=>`${todo.habit_id}|${todo.due_date}`)).size).toBe(after.length)
+    expect(after.length).toBeGreaterThanOrEqual(expectedWeekday.length)
+    expect(after.length).toBeLessThanOrEqual(expectedWeekday.length+1)
+    after.filter(todo=>!todo.completed).forEach(todo=>{
+      expect(weekdayKeys.has(todo.due_date||'')).toBe(true)
+    })
+    const frequencyRenders=renderCount
+    const frequencyWrites=todoWrites()
+    setItemSpy.mockRestore()
+
+    // 打卡：业务 setState 与"今日待办完成"批处理为 1 次渲染；排期 effect 不触发
+    expect({checkRenders,checkWrites}).toEqual({checkRenders:1,checkWrites:1})
+    // 频率变更：1 次 setHabits + 1 次排期 setTodos；p_todos 只落盘 1 次
+    // 若出现死循环，这两个值会持续增长而不是停在 2 / 1
+    expect({frequencyRenders,frequencyWrites}).toEqual({frequencyRenders:2,frequencyWrites:1})
   })
 })

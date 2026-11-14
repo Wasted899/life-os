@@ -1,4 +1,4 @@
-import {createContext,useContext,useEffect,useLayoutEffect,useState,useCallback,useRef,ReactNode} from 'react'
+import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useState,useCallback,useRef,ReactNode} from 'react'
 import {load,save,uid,readRaw,readLegacy,readLegacyText,writeLegacy,writeLegacyText,backupOnce,saveBackup,readBackup,readCloudSyncMeta,writeCloudSyncMeta,clearCloudSyncMeta,BACKUP_KEYS,LOCAL_WORKSPACE_KEY,ACTIVE_OWNER_KEY} from '../core/storage'
 import {normalizeLocalData,migrateExtras,buildExportPayload,splitLegacyReviews} from '../core/migrate'
 import {sanitizeTodos,sanitizeHabits,sanitizeDays,sanitizeTransactions,sanitizeTimeBlocks,sanitizeGoals,sanitizeMemos,sanitizePomodoros,sanitizeCategories,sanitizeLists,sanitizeFinanceCategories,sanitizeAccounts,sanitizeRecurrings,sanitizeAll} from '../lib/sanitize'
@@ -7,6 +7,8 @@ import {supabase,isCloudMode,insertRow,updateRow,deleteRow,batchInsert,clearTabl
 import {CLOUD_DOMAINS,CLOUD_TABLES,inspectLocal,mergeCloudIntoLocal,buildCloudSignature,decideCloudAction,IDLE_CLOUD_STATE} from '../core/cloudSync'
 import type{CloudUiState,CloudPayload} from '../core/cloudSync'
 import {useAuth} from './AuthContext'
+import {buildHabitTodoPlan,periodRange} from '../features/habits/habitSchedule'
+import type{HabitTodoPlanItem} from '../features/habits/habitSchedule'
 import dayjs from 'dayjs'
 
 type Ctx={
@@ -42,14 +44,6 @@ type Ctx={
 }
 
 const C=createContext<Ctx>({} as Ctx)
-
-const habitDue=(h:Habit,d:dayjs.Dayjs)=>{
-  if(h.frequency==='daily')return true
-  if(h.frequency==='weekdays')return d.day()>=1&&d.day()<=5
-  if(h.frequency==='weekends')return d.day()===0||d.day()===6
-  if(h.frequency==='custom')return(h.custom_days||[]).includes(d.day())
-  return true
-}
 
 // 本地存储的key
 const LS_KEYS={
@@ -454,29 +448,74 @@ export function DataProvider({children}:{children:ReactNode}){
     }
   }
 
-  // ========== 习惯同步待办（生成未来7天） ==========
-  const syncHabitsToTodos=useCallback(()=>{
-    setTodos(prev=>{
-      let next=[...prev]
-      const today=dayjs()
-      for(let i=0;i<7;i++){
-        const dt=today.add(i,'day')
-        const ds=dt.format('YYYY-MM-DD')
-        habits.forEach(hb=>{
-          if(!habitDue(hb,dt))return
-          const exists=next.some(td=>td.habit_id===hb.id&&td.due_date===ds)
-          if(!exists){
-            const newTodo:Todo={id:uid(),title:hb.title,quadrant:'q2',due_date:ds,due_time:'',completed:false,list_id:'inbox',category_id:hb.category_id||'',pinned:false,status:'todo',source:'habit',habit_id:hb.id}
-            next.push(newTodo)
-            if(loggedIn&&isCloudMode)insertRow('todos',newTodo)
-          }
-        })
-      }
-      return next
-    })
-  },[habits,loggedIn])
+  // ========== 习惯待办重算（M1-13） ==========
+  // TODO(M1 末，SQL 侧统一补)：`(user_id, habit_id, due_date)` 唯一索引。
+  // 本批只用内存去重保证不产生重复待办；云端表尚未加唯一约束。
+  // TODO(M2/M3)：目前 check_dates: string[] 只支持"一天最多一次打卡"。
+  // 若未来要支持"每天 N 次"（如每天 8 杯水），需要把 check_dates 改成
+  // `{date, count}[]` 或嵌套数组，并同步迁移历史数据。
+  /**
+   * 只包含"影响排期 / 标题 / 分类"的字段，check_dates 刻意排除。
+   * 打卡会改 habits 数组但不会改这个 key，因此不会触发待办重算，
+   * 从根源上切断 打卡 → setHabits → 重算 → setTodos 的连锁。
+   */
+  const habitPlanKey=useMemo(
+    ()=>habits.map(hb=>[hb.id,hb.title,hb.frequency,(hb.custom_days||[]).join('.'),hb.category_id||'',hb.target_count??'',hb.target_period??'',hb.monthly_day??''].join('|')).join('~'),
+    [habits]
+  )
 
-  useEffect(()=>{if(habits.length>0)syncHabitsToTodos()},[habits.length,syncHabitsToTodos])
+  /**
+   * 与现有待办做 diff：
+   * - 新增：计划内有、现有无（按 habit_id + due_date 去重，内存 Set 防重）
+   * - 删除：本习惯当前重算窗口 [周期起点, 今天+6] 内、未完成、且已不在计划里
+   *   （频率变更后旧生成物一并作废，标题被改过也删，这是已确认的行为）
+   * - 已完成待办一律保留
+   * - 无变化直接 return，不调用 setTodos，避免无意义重渲染
+   */
+  const reconcileHabitTodos=useCallback((plan:HabitTodoPlanItem[],today:string)=>{
+    const current=latestRef.current.todos
+    const planned=latestRef.current.habits
+    const end=dayjs(today).add(6,'day').format('YYYY-MM-DD')
+    const desired=new Set(plan.map(item=>`${item.habitId}|${item.dueDate}`))
+    const windows=new Map<string,{start:string;end:string}>()
+    planned.forEach(hb=>windows.set(hb.id,{start:periodRange(hb,today).start,end}))
+
+    const next:Todo[]=[]
+    const kept=new Set<string>()
+    current.forEach(todo=>{
+      const key=todo.habit_id&&todo.due_date?`${todo.habit_id}|${todo.due_date}`:''
+      if(key)kept.add(key)
+      const win=todo.habit_id?windows.get(todo.habit_id):undefined
+      const removable=!!win&&!todo.completed&&!!todo.due_date&&todo.due_date>=win.start&&todo.due_date<=win.end&&!desired.has(key)
+      if(removable){
+        if(loggedIn&&isCloudMode)deleteRow('todos',todo.id)
+        return
+      }
+      next.push(todo)
+    })
+
+    plan.forEach(item=>{
+      const key=`${item.habitId}|${item.dueDate}`
+      if(kept.has(key))return
+      const newTodo:Todo={id:uid(),title:item.title,quadrant:'q2',due_date:item.dueDate,due_time:'',completed:false,list_id:'inbox',category_id:item.categoryId||'',pinned:false,status:'todo',source:'habit',habit_id:item.habitId}
+      next.push(newTodo)
+      kept.add(key)
+      if(loggedIn&&isCloudMode)insertRow('todos',newTodo)
+    })
+
+    const unchanged=next.length===current.length&&next.every((todo,index)=>todo===current[index])
+    if(!unchanged)setTodos(next)
+  },[loggedIn])
+
+  const syncHabitsToTodos=useCallback(()=>{
+    const today=dayjs().format('YYYY-MM-DD')
+    const currentHabits=latestRef.current.habits
+    if(!currentHabits.length)return
+    reconcileHabitTodos(buildHabitTodoPlan(currentHabits,today,6),today)
+  },[reconcileHabitTodos])
+
+  // 只依赖 habitPlanKey：频率/目标/标题/分类变化才重算；打卡不改 key，不会触发
+  useEffect(()=>{syncHabitsToTodos()},[habitPlanKey,syncHabitsToTodos])
 
   const deleteHabit=(id:string)=>{
     h.del(id)
