@@ -1,7 +1,7 @@
 import {useState,useRef} from 'react'
-import {useData} from '../context/DataContext'
-import {useTheme,Theme} from '../context/ThemeContext'
-import {useAuth} from '../context/AuthContext'
+import {useData} from '../../context/DataContext'
+import {useTheme,Theme} from '../../context/ThemeContext'
+import {useAuth} from '../../context/AuthContext'
 const modules=[{id:'todos',name:'待办清单',icon:'✅'},{id:'goals',name:'目标管理',icon:'🎯'},{id:'habits',name:'习惯打卡',icon:'🔥'},{id:'days',name:'重要日子',icon:'⏰'},{id:'calendar',name:'日历',icon:'📆'},{id:'time',name:'时间统计',icon:'⏱️'},{id:'pomodoro',name:'番茄钟',icon:'🍅'},{id:'review',name:'复盘',icon:'📝'},{id:'memos',name:'备忘录',icon:'📝'},{id:'finance',name:'记账',icon:'💰'},{id:'guide',name:'指南',icon:'📚'}]
 export default function Settings(){
   const{exportAll,importAll,resetAll}=useData()

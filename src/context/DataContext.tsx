@@ -1,8 +1,11 @@
-import {createContext,useContext,useEffect,useState,useCallback,ReactNode} from 'react'
-import {load,save,uid} from '../lib/storage'
-import {sanitizeTodos,sanitizeHabits,sanitizeDays,sanitizeTransactions,sanitizeTimeBlocks,sanitizeGoals,sanitizeMemos,sanitizePomodoros,sanitizeCategories,sanitizeLists,sanitizeAll,sanitizeFinanceCategories,sanitizeAccounts,sanitizeRecurrings} from '../lib/sanitize'
-import type{Todo,TodoList,Category,Goal,Habit,ImportantDay,TimeBlock,Pomodoro,Transaction,Memo,FinanceCategory,Account,Recurring} from '../lib/supabase'
-import {supabase,isCloudMode,fetchTable,insertRow,updateRow,deleteRow,batchInsert,clearTable,TABLE_MAP} from '../lib/supabase'
+import {createContext,useContext,useEffect,useState,useCallback,useRef,ReactNode} from 'react'
+import {load,save,uid,readRaw,readLegacy,readLegacyText,writeLegacy,writeLegacyText,backupOnce,saveBackup,readCloudSyncMeta,writeCloudSyncMeta,BACKUP_KEYS} from '../core/storage'
+import {normalizeLocalData,migrateExtras,buildExportPayload,splitLegacyReviews} from '../core/migrate'
+import {sanitizeTodos,sanitizeHabits,sanitizeDays,sanitizeTransactions,sanitizeTimeBlocks,sanitizeGoals,sanitizeMemos,sanitizePomodoros,sanitizeCategories,sanitizeLists,sanitizeFinanceCategories,sanitizeAccounts,sanitizeRecurrings,sanitizeAll} from '../lib/sanitize'
+import type{Todo,TodoList,Category,Goal,Habit,ImportantDay,TimeBlock,Pomodoro,Transaction,Memo,FinanceCategory,Account,Recurring,Theme,Quote,GuideEntry,DomainData,DomainKey} from '../core/types'
+import {supabase,isCloudMode,insertRow,updateRow,deleteRow,batchInsert,clearTable,TABLE_MAP,fetchAllTablesStrict,getDroppedColumns} from '../lib/supabase'
+import {CLOUD_DOMAINS,CLOUD_TABLES,inspectLocal,mergeCloudIntoLocal,buildCloudSignature,decideCloudAction,IDLE_CLOUD_STATE} from '../core/cloudSync'
+import type{CloudUiState,CloudPayload} from '../core/cloudSync'
 import {useAuth} from './AuthContext'
 import dayjs from 'dayjs'
 
@@ -22,10 +25,18 @@ type Ctx={
   recurrings:Recurring[];addRecurring:(r:Omit<Recurring,'id'>)=>void;updateRecurring:(id:string,p:Partial<Recurring>)=>void;deleteRecurring:(id:string)=>void
   syncHabitsToTodos:()=>void
   exportAll:()=>string;importAll:(j:string)=>void;resetAll:()=>void
-  uploadLocalToCloud:(skipClear?:boolean)=>Promise<void>
+  uploadLocalToCloud:(skipClear?:boolean,options?:{skipSnapshot?:boolean})=>Promise<void>
   testCloudConnection:()=>Promise<void>
   uploading:boolean
   cloudLoading:boolean
+  /** 云同步 UI 状态：判断"云端为空 / 读取失败 / 两边都有" */
+  cloud:CloudUiState
+  /** 处理云端弹窗：合并（云端赢）/ 用本机覆盖云端 / 稍后 */
+  resolveCloud:(choice:'merge'|'overwrite'|'skip')=>Promise<void>
+  retryCloud:()=>void
+  dismissCloudNotice:()=>void
+  /** 强制把当前云端 13 表快照写入本地备份；失败会抛错（覆盖前必调） */
+  createCloudSnapshot:(reason:string)=>Promise<void>
 }
 
 const C=createContext<Ctx>({} as Ctx)
@@ -45,78 +56,246 @@ const LS_KEYS={
   transactions:'p_tx',memos:'p_memos',financeCategories:'p_fc',accounts:'p_accts',recurrings:'p_rec'
 }
 
+// 6 个仅本地实体仍在使用的旧 key（页面直接读 localStorage，保持原样）
+const EXTRA_KEYS=['p_themes','p_daily_reviews','p_weekly_reviews','p_monthly_reviews','p_yearly_reviews','p_disabled','p_nick','p_avatar'] as const
+
+/**
+ * localStorage 初始化：
+ * 1. 读取原始快照（新命名空间 → 旧 key）
+ * 2. 迁移前把原始快照写入独立备份 key，只写一次，绝不覆盖
+ * 3. sanitize（兜底占位）→ migrate（唯一出口），返回最终结果
+ */
+function readInitialLocalData(){
+  const domains:Record<string,unknown>={}
+  for(const[domain,key]of Object.entries(LS_KEYS))domains[domain]=readRaw(key)
+  const extras:Record<string,unknown>={}
+  for(const key of EXTRA_KEYS){
+    // p_nick / p_avatar 在页面里是裸字符串，不是 JSON
+    extras[key]=(key==='p_nick'||key==='p_avatar')?readLegacyText(key,''):readRaw(key)
+  }
+
+  backupOnce(BACKUP_KEYS.local,{
+    savedAt:new Date().toISOString(),
+    note:'首次接入 migrate 前的原始快照，仅保留这一份',
+    domains,
+    extras,
+  })
+
+  return normalizeLocalData(domains).data
+}
+
+/** 读取 6 个本地实体（导出时实时读取，避免与 ThemeContext / ReviewPage 形成双份状态） */
+function readLocalExtras(){
+  const reviewsOf=(key:string,period:'daily'|'weekly'|'monthly'|'yearly')=>{
+    const list=readRaw(key)
+    return Array.isArray(list)
+      ?list.filter(item=>!!item&&typeof item==='object').map(item=>({period_type:period,...(item as Record<string,unknown>)}))
+      :[]
+  }
+  return migrateExtras({
+    reviews:[
+      ...reviewsOf('p_daily_reviews','daily'),
+      ...reviewsOf('p_weekly_reviews','weekly'),
+      ...reviewsOf('p_monthly_reviews','monthly'),
+      ...reviewsOf('p_yearly_reviews','yearly'),
+    ],
+    themes:load<Theme[]>('p_themes',[]),
+    quotes:load<Quote[]>('p_quotes',[]),
+    guides:load<GuideEntry[]>('p_guides',[]),
+    settings:{disabledModules:readLegacy('p_disabled',[])},
+    user:{id:'local',nickname:readLegacyText('p_nick',''),avatar:readLegacyText('p_avatar','')},
+  })
+}
+
+/** 仅当导入文件确实包含对应字段时才写回，避免旧文件（没有 extras）把现有数据清空 */
+function hasKey(source:Record<string,unknown>,keys:string[]){
+  return keys.some(key=>Object.prototype.hasOwnProperty.call(source,key))
+}
+
+/** 云端行 → 本地行：去掉 user_id；备忘录 created_at 为空时用 inserted_at 兜底（旧数据兼容） */
+function normalizeCloudRows(key:DomainKey,rows:any[]):any[]{
+  if(!Array.isArray(rows))return []
+  return rows.map(row=>{
+    if(!row||typeof row!=='object')return row
+    const{user_id,...rest}=row as Record<string,any>
+    if(key==='memos'&&!rest.created_at&&rest.inserted_at)rest.created_at=rest.inserted_at
+    return rest
+  })
+}
+
 export function DataProvider({children}:{children:ReactNode}){
   const{user}=useAuth()
   const loggedIn=!!user
 
-  // 所有数据state（初始化从localStorage读取）
-  const[todos,setTodos]=useState<Todo[]>(()=>sanitizeTodos(load(LS_KEYS.todos,[])))
-  const[lists,setLists]=useState<TodoList[]>(()=>sanitizeLists(load(LS_KEYS.lists,[])))
-  const[categories,setCategories]=useState<Category[]>(()=>sanitizeCategories(load(LS_KEYS.categories,[])))
-  const[goals,setGoals]=useState<Goal[]>(()=>sanitizeGoals(load(LS_KEYS.goals,[])))
-  const[habits,setHabits]=useState<Habit[]>(()=>sanitizeHabits(load(LS_KEYS.habits,[])))
-  const[days,setDays]=useState<ImportantDay[]>(()=>sanitizeDays(load(LS_KEYS.days,[])))
-  const[timeBlocks,setTimeBlocks]=useState<TimeBlock[]>(()=>sanitizeTimeBlocks(load(LS_KEYS.timeBlocks,[])))
-  const[pomodoros,setPomodoros]=useState<Pomodoro[]>(()=>sanitizePomodoros(load(LS_KEYS.pomodoros,[])))
-  const[transactions,setTransactions]=useState<Transaction[]>(()=>sanitizeTransactions(load(LS_KEYS.transactions,[])))
-  const[memos,setMemos]=useState<Memo[]>(()=>sanitizeMemos(load(LS_KEYS.memos,[])))
-  const[financeCategories,setFinanceCategories]=useState<FinanceCategory[]>(()=>sanitizeFinanceCategories(load(LS_KEYS.financeCategories,[])))
-  const[accounts,setAccounts]=useState<Account[]>(()=>sanitizeAccounts(load(LS_KEYS.accounts,[])))
-  const[recurrings,setRecurrings]=useState<Recurring[]>(()=>sanitizeRecurrings(load(LS_KEYS.recurrings,[])))
+  // 所有数据state（初始化统一走 readInitialLocalData：备份 → sanitize → migrate）
+  const[initial]=useState(readInitialLocalData)
+  const[todos,setTodos]=useState<Todo[]>(initial.todos)
+  const[lists,setLists]=useState<TodoList[]>(initial.lists)
+  const[categories,setCategories]=useState<Category[]>(initial.categories)
+  const[goals,setGoals]=useState<Goal[]>(initial.goals)
+  const[habits,setHabits]=useState<Habit[]>(initial.habits)
+  const[days,setDays]=useState<ImportantDay[]>(initial.days)
+  const[timeBlocks,setTimeBlocks]=useState<TimeBlock[]>(initial.timeBlocks)
+  const[pomodoros,setPomodoros]=useState<Pomodoro[]>(initial.pomodoros)
+  const[transactions,setTransactions]=useState<Transaction[]>(initial.transactions)
+  const[memos,setMemos]=useState<Memo[]>(initial.memos)
+  const[financeCategories,setFinanceCategories]=useState<FinanceCategory[]>(initial.financeCategories)
+  const[accounts,setAccounts]=useState<Account[]>(initial.accounts)
+  const[recurrings,setRecurrings]=useState<Recurring[]>(initial.recurrings)
 
   const[uploading,setUploading]=useState(false)
   const[cloudLoading,setCloudLoading]=useState(false)
+  // 云同步 UI 状态：与"云端到底读没读到"严格绑定，读取失败绝不进入任何覆盖分支
+  const[cloud,setCloud]=useState<CloudUiState>(IDLE_CLOUD_STATE)
+  const[reloadToken,setReloadToken]=useState(0)
+  // 最近一次成功读取的云端数据（合并时使用）
+  const cloudRef=useRef<CloudPayload>({})
+  // 最新的本地 13 域（effect 里不能直接依赖 13 个 state，否则每次输入都会重跑云端检查）
+  const latestRef=useRef<DomainData>({} as DomainData)
+  useEffect(()=>{
+    latestRef.current={todos,lists,categories,goals,habits,days,timeBlocks,pomodoros,transactions,memos,financeCategories,accounts,recurrings}
+  })
+  // [MIGRATE-ANCHOR:init] 已启用：readInitialLocalData() 内完成"备份原始快照 → sanitize → migrate"
+
+  /** 把 13 域写回 state（统一走 sanitize，避免云端裸数据绕过规范化） */
+  const applyDomainData=useCallback((d:DomainData)=>{
+    setTodos(sanitizeTodos(d.todos))
+    setLists(sanitizeLists(d.lists))
+    setCategories(sanitizeCategories(d.categories))
+    setGoals(sanitizeGoals(d.goals))
+    setHabits(sanitizeHabits(d.habits))
+    setDays(sanitizeDays(d.days))
+    setTimeBlocks(sanitizeTimeBlocks(d.timeBlocks))
+    setPomodoros(sanitizePomodoros(d.pomodoros))
+    setTransactions(sanitizeTransactions(d.transactions))
+    setMemos(sanitizeMemos(d.memos))
+    setFinanceCategories(sanitizeFinanceCategories(d.financeCategories))
+    setAccounts(sanitizeAccounts(d.accounts))
+    setRecurrings(sanitizeRecurrings(d.recurrings))
+  },[])
 
   // ========== 本地存储自动保存（无论是否登录都保存本地，作为缓存） ==========
-  useEffect(()=>save(LS_KEYS.todos,todos),[todos])
-  useEffect(()=>save(LS_KEYS.lists,lists),[lists])
-  useEffect(()=>save(LS_KEYS.categories,categories),[categories])
-  useEffect(()=>save(LS_KEYS.goals,goals),[goals])
-  useEffect(()=>save(LS_KEYS.habits,habits),[habits])
-  useEffect(()=>save(LS_KEYS.days,days),[days])
-  useEffect(()=>save(LS_KEYS.timeBlocks,timeBlocks),[timeBlocks])
-  useEffect(()=>save(LS_KEYS.pomodoros,pomodoros),[pomodoros])
-  useEffect(()=>save(LS_KEYS.transactions,transactions),[transactions])
-  useEffect(()=>save(LS_KEYS.memos,memos),[memos])
-  useEffect(()=>save(LS_KEYS.financeCategories,financeCategories),[financeCategories])
-  useEffect(()=>save(LS_KEYS.accounts,accounts),[accounts])
-  useEffect(()=>save(LS_KEYS.recurrings,recurrings),[recurrings])
+  useEffect(()=>{save(LS_KEYS.todos,todos)},[todos])
+  useEffect(()=>{save(LS_KEYS.lists,lists)},[lists])
+  useEffect(()=>{save(LS_KEYS.categories,categories)},[categories])
+  useEffect(()=>{save(LS_KEYS.goals,goals)},[goals])
+  useEffect(()=>{save(LS_KEYS.habits,habits)},[habits])
+  useEffect(()=>{save(LS_KEYS.days,days)},[days])
+  useEffect(()=>{save(LS_KEYS.timeBlocks,timeBlocks)},[timeBlocks])
+  useEffect(()=>{save(LS_KEYS.pomodoros,pomodoros)},[pomodoros])
+  useEffect(()=>{save(LS_KEYS.transactions,transactions)},[transactions])
+  useEffect(()=>{save(LS_KEYS.memos,memos)},[memos])
+  useEffect(()=>{save(LS_KEYS.financeCategories,financeCategories)},[financeCategories])
+  useEffect(()=>{save(LS_KEYS.accounts,accounts)},[accounts])
+  useEffect(()=>{save(LS_KEYS.recurrings,recurrings)},[recurrings])
 
-  // ========== 登录时从云端加载数据 ==========
+  // ========== 登录后检查云端（严格区分"读取失败"与"云端为空"） ==========
   useEffect(()=>{
-    if(!loggedIn||!isCloudMode||!supabase)return
-    let cancelled=false
-    const loadCloud=async()=>{
-      setCloudLoading(true)
-      try{
-        const [t,l,c,g,h,d,tb,p,tx,m,fc,a,r]=await Promise.all([
-          fetchTable('todos'),fetchTable('todo_lists'),fetchTable('categories'),
-          fetchTable('goals'),fetchTable('habits'),fetchTable('important_days'),
-          fetchTable('time_blocks'),fetchTable('pomodoros'),fetchTable('transactions'),
-          fetchTable('memos'),fetchTable('finance_categories'),fetchTable('accounts'),fetchTable('recurrings')
-        ])
-        if(cancelled)return
-        // 云端数据去掉user_id字段后存入本地state
-        const strip=(rows:any[])=>rows.map(({user_id,...rest})=>rest)
-        setTodos(sanitizeTodos(strip(t)))
-        setLists(sanitizeLists(strip(l)))
-        setCategories(sanitizeCategories(strip(c)))
-        setGoals(sanitizeGoals(strip(g)))
-        setHabits(sanitizeHabits(strip(h)))
-        setDays(sanitizeDays(strip(d)))
-        setTimeBlocks(sanitizeTimeBlocks(strip(tb)))
-        setPomodoros(sanitizePomodoros(strip(p)))
-        setTransactions(sanitizeTransactions(strip(tx)))
-        setMemos(sanitizeMemos(strip(m)))
-        setFinanceCategories(sanitizeFinanceCategories(strip(fc)))
-        setAccounts(sanitizeAccounts(strip(a)))
-        setRecurrings(sanitizeRecurrings(strip(r)))
-      }catch(e){console.error('加载云端数据失败:',e)}
-      finally{if(!cancelled)setCloudLoading(false)}
+    const userId=user?.id
+    if(!userId||!isCloudMode||!supabase){
+      setCloud(IDLE_CLOUD_STATE)
+      return
     }
-    loadCloud()
+    // 上传过程中不检查，避免读到"清空中"的中间态；上传结束会自动重跑
+    if(uploading){
+      setCloudLoading(false)
+      return
+    }
+
+    let cancelled=false
+    setCloudLoading(true)
+    ;(async()=>{
+      try{
+        setCloud(prev=>({...prev,phase:'checking',failedTables:[]}))
+        const{ok,data,failed}=await fetchAllTablesStrict([...CLOUD_TABLES])
+        if(cancelled)return
+
+        const payload:CloudPayload={}
+        for(const{key,table}of CLOUD_DOMAINS)payload[key]=normalizeCloudRows(key,data[table]||[])
+        // 只有读取成功才更新 cloudRef（合并/覆盖时使用），失败时保留上一次成功快照
+        if(ok)cloudRef.current=payload
+
+        const decision=decideCloudAction({
+          ok,
+          failed,
+          cloud:payload,
+          local:latestRef.current,
+          meta:readCloudSyncMeta(),
+          userId,
+        })
+
+        switch(decision.kind){
+          case 'error':
+            setCloud({phase:'error',failedTables:decision.failed,counts:decision.counts,message:decision.message})
+            return
+          case 'offer-upload':
+            setCloud({phase:'offer-upload',failedTables:[],counts:decision.counts})
+            return
+          case 'idle':
+            setCloud({phase:'idle',failedTables:[],counts:decision.counts})
+            return
+          case 'pull':
+            applyDomainData(decision.data)
+            writeCloudSyncMeta({userId,cloudSignature:decision.signature,at:new Date().toISOString()})
+            setCloud({phase:'idle',failedTables:[],counts:decision.counts})
+            return
+          case 'conflict':
+            setCloud({phase:'conflict',failedTables:[],counts:decision.counts,merge:decision.merge})
+            return
+        }
+      }finally{
+        if(!cancelled)setCloudLoading(false)
+      }
+    })().catch(e=>{
+      if(cancelled)return
+      console.error('[云同步] 检查云端失败:',e)
+      setCloud({phase:'error',failedTables:[],counts:inspectLocal(latestRef.current).counts,message:e?.message||'云端读取失败'})
+    })
     return()=>{cancelled=true}
-  },[loggedIn])
+  },[user?.id,uploading,reloadToken,applyDomainData])
+
+  /** 强制抓取云端 13 表快照并写入本地备份；不完整或写不进就抛错（覆盖前必调） */
+  const createCloudSnapshot=async(reason:string)=>{
+    if(!isCloudMode||!supabase)throw new Error('未配置云端，无法创建快照')
+    const{ok,data,failed}=await fetchAllTablesStrict([...CLOUD_TABLES])
+    const written=saveBackup(BACKUP_KEYS.cloudBeforeOverwrite,{
+      savedAt:new Date().toISOString(),
+      reason,
+      complete:ok,
+      failedTables:failed,
+      tables:data,
+    })
+    if(!written)throw new Error('云端快照写入失败（浏览器存储可能已满），已中止覆盖操作')
+    if(!ok)throw new Error(`云端快照不完整（失败表：${failed.join('、')}），已中止覆盖操作`)
+  }
+
+  /** 处理云同步弹窗：合并（云端赢）/ 用本机覆盖云端 / 稍后 */
+  const resolveCloud=async(choice:'merge'|'overwrite'|'skip')=>{
+    const userId=user?.id
+    if(!userId)return
+    if(choice==='skip'){
+      setCloud(IDLE_CLOUD_STATE)
+      return
+    }
+    if(choice==='merge'){
+      const merged=mergeCloudIntoLocal(latestRef.current,cloudRef.current)
+      applyDomainData(sanitizeAll(merged.data) as DomainData)
+      writeCloudSyncMeta({userId,cloudSignature:buildCloudSignature(cloudRef.current),at:new Date().toISOString()})
+      setCloud(IDLE_CLOUD_STATE)
+      return
+    }
+    // 覆盖前先强制写云端快照，快照不完整直接中止（不弹"失败"以外的任何分支）
+    await createCloudSnapshot('manual-overwrite')
+    await uploadLocalToCloud(false,{skipSnapshot:true})
+    setCloud(IDLE_CLOUD_STATE)
+  }
+
+  const retryCloud=()=>{
+    setCloud(prev=>({...prev,phase:'checking',failedTables:[]}))
+    setReloadToken(n=>n+1)
+  }
+
+  const dismissCloudNotice=()=>setCloud(IDLE_CLOUD_STATE)
 
   // ========== 通用CRUD工厂（带云端同步） ==========
   const mk=<T extends{id:string}>(
@@ -233,25 +412,56 @@ export function DataProvider({children}:{children:ReactNode}){
   }
 
   // ========== 导出/导入/重置 ==========
-  const exportAll=()=>JSON.stringify({todos,lists,categories,goals,habits,days,timeBlocks,pomodoros,transactions,memos,financeCategories,accounts,recurrings,v:5},null,2)
+  const exportAll=()=>{
+    const data={todos,lists,categories,goals,habits,days,timeBlocks,pomodoros,transactions,memos,financeCategories,accounts,recurrings}
+    // 13 域 + 6 个本地实体，带 schemaVersion；同时保留 v:5 让旧版本仍能导入
+    return JSON.stringify(buildExportPayload(data,readLocalExtras()),null,2)
+  }
 
   const importAll=(j:string)=>{
     try{
       const raw=JSON.parse(j)
-      const d=sanitizeAll(raw)
-      if(d.todos)setTodos(d.todos)
-      if(d.lists)setLists(d.lists)
-      if(d.categories)setCategories(d.categories)
-      if(d.goals)setGoals(d.goals)
-      if(d.habits)setHabits(d.habits)
-      if(d.days)setDays(d.days)
-      if(d.timeBlocks)setTimeBlocks(d.timeBlocks)
-      if(d.pomodoros)setPomodoros(d.pomodoros)
-      if(d.transactions)setTransactions(d.transactions)
-      if(d.memos)setMemos(d.memos)
-      if(d.financeCategories)setFinanceCategories(d.financeCategories)
-      if(d.accounts)setAccounts(d.accounts)
-      if(d.recurrings)setRecurrings(d.recurrings)
+      const source:Record<string,unknown>=raw&&typeof raw==='object'
+        ?((raw.data&&typeof raw.data==='object')?raw.data as Record<string,unknown>:raw as Record<string,unknown>)
+        :{}
+      // [MIGRATE-ANCHOR:import] 已启用：导入前先备份原始 JSON（只保留最近一份），再 sanitize → migrate
+      saveBackup(BACKUP_KEYS.import,raw)
+      const result=normalizeLocalData(raw)
+      const d=result.data
+      setTodos(d.todos)
+      setLists(d.lists)
+      setCategories(d.categories)
+      setGoals(d.goals)
+      setHabits(d.habits)
+      setDays(d.days)
+      setTimeBlocks(d.timeBlocks)
+      setPomodoros(d.pomodoros)
+      setTransactions(d.transactions)
+      setMemos(d.memos)
+      setFinanceCategories(d.financeCategories)
+      setAccounts(d.accounts)
+      setRecurrings(d.recurrings)
+
+      // 6 个本地实体：只有导入文件确实带有对应字段时才写回
+      const extras=migrateExtras(raw)
+      if(hasKey(source,['reviews','p_daily_reviews','p_weekly_reviews','p_monthly_reviews','p_yearly_reviews'])){
+        const legacy=splitLegacyReviews(extras.reviews)
+        writeLegacy('p_daily_reviews',legacy.daily)
+        writeLegacy('p_weekly_reviews',legacy.weekly)
+        writeLegacy('p_monthly_reviews',legacy.monthly)
+        writeLegacy('p_yearly_reviews',legacy.yearly)
+      }
+      if(hasKey(source,['themes']))save('p_themes',extras.themes)
+      if(hasKey(source,['quotes']))save('p_quotes',extras.quotes)
+      if(hasKey(source,['guides']))save('p_guides',extras.guides)
+      if(hasKey(source,['settings','p_disabled','disabledModules'])){
+        writeLegacy('p_disabled',extras.settings.disabledModules||[])
+      }
+      if(hasKey(source,['user','user_meta','p_nick','p_avatar'])){
+        if(extras.user.nickname!==undefined)writeLegacyText('p_nick',extras.user.nickname)
+        if(extras.user.avatar!==undefined)writeLegacyText('p_avatar',extras.user.avatar)
+      }
+
       alert('导入成功，数据已自动兼容校验')
     }catch{alert('导入失败：文件格式错误')}
   }
@@ -266,7 +476,7 @@ export function DataProvider({children}:{children:ReactNode}){
   }
 
   // ========== 上传本地数据到云端（带详细错误定位） ==========
-  const uploadLocalToCloud=async(skipClear=false)=>{
+  const uploadLocalToCloud=async(skipClear=false,options:{skipSnapshot?:boolean}={})=>{
     if(!loggedIn||!isCloudMode||!supabase)throw new Error('未登录或未配置云端')
     setUploading(true)
     const logs:string[]=[]
@@ -274,13 +484,24 @@ export function DataProvider({children}:{children:ReactNode}){
     try{
       // 第0步：验证登录状态和用户ID
       log('=== 开始上传 ===')
-      const{data:{user}}=await supabase.auth.getUser()
-      if(!user)throw new Error('未获取到登录用户信息，请重新登录')
-      log(`当前用户ID: ${user.id}`)
-      log(`当前用户邮箱: ${user.email}`)
+      const{data:{user:authUser}}=await supabase.auth.getUser()
+      if(!authUser)throw new Error('未获取到登录用户信息，请重新登录')
+      log(`当前用户ID: ${authUser.id}`)
+      log(`当前用户邮箱: ${authUser.email}`)
 
       const tables=['todos','todo_lists','categories','goals','habits','important_days','time_blocks','pomodoros','transactions','memos','finance_categories','accounts','recurrings']
       const dataMap:Record<string,any[]>={todos,lists,categories,goals,habits,days,timeBlocks,pomodoros,transactions,memos,financeCategories,accounts,recurrings}
+
+      // 第0.5步：清空前先抓云端快照（失败直接中止，避免"覆盖后无法回退"）
+      if(!skipClear&&!options.skipSnapshot){
+        log('--- 抓取云端快照（覆盖前可回退）---')
+        try{
+          await createCloudSnapshot('uploadLocalToCloud')
+          log('✓ 云端快照已写入本地备份')
+        }catch(e:any){
+          throw new Error(`云端快照失败，已中止上传：${e.message}`)
+        }
+      }
 
       // 第1步：清空云端数据（可选跳过，失败也不中断）
       if(!skipClear){
@@ -312,6 +533,13 @@ export function DataProvider({children}:{children:ReactNode}){
         }
       }
 
+      // 记录本次已处理的云端状态，避免上传完立刻又弹"两边都有"
+      writeCloudSyncMeta({
+        userId:authUser.id,
+        cloudSignature:buildCloudSignature(dataMap as unknown as CloudPayload),
+        at:new Date().toISOString(),
+      })
+
       log('=== 全部上传成功 ===')
       alert('✅ 上传成功！\n\n' + logs.join('\n'))
     }catch(e:any){
@@ -326,14 +554,18 @@ export function DataProvider({children}:{children:ReactNode}){
   const testCloudConnection=async()=>{
     if(!supabase){alert('未配置Supabase');return}
     try{
-      const{data:{user}}=await supabase.auth.getUser()
-      if(!user){alert('未登录');return}
+      const{data:{user:authUser}}=await supabase.auth.getUser()
+      if(!authUser){alert('未登录');return}
       // 测试查询
       const{data,error}=await supabase.from('todos').select('id').limit(1)
       if(error){
-        alert(`❌ 连接测试失败\n\n用户: ${user.email}\n错误: ${error.message}\n\n这说明RLS策略或表结构有问题`)
+        alert(`❌ 连接测试失败\n\n用户: ${authUser.email}\n错误: ${error.message}\n\n这说明RLS策略或表结构有问题`)
       }else{
-        alert(`✅ 连接测试成功\n\n用户: ${user.email}\n用户ID: ${user.id}\ntodos表查询正常\n\n可以尝试上传数据了`)
+        const dropped=getDroppedColumns()
+        const droppedText=Object.keys(dropped).length
+          ?`\n\n⚠ 本次会话因云端缺列被跳过的字段：\n${JSON.stringify(dropped,null,2)}\n请执行 supabase_schema.sql 更新表结构`
+          :''
+        alert(`✅ 连接测试成功\n\n用户: ${authUser.email}\n用户ID: ${authUser.id}\ntodos表查询正常\n\n可以尝试上传数据了${droppedText}`)
       }
     }catch(e:any){
       alert(`❌ 连接测试异常: ${e.message}`)
@@ -356,7 +588,8 @@ export function DataProvider({children}:{children:ReactNode}){
       accounts,addAccount:ac.add,updateAccount:ac.update,deleteAccount:ac.del,
       recurrings,addRecurring:rc.add,updateRecurring:rc.update,deleteRecurring:rc.del,
       syncHabitsToTodos,exportAll,importAll,resetAll,
-      uploadLocalToCloud,testCloudConnection,uploading,cloudLoading
+      uploadLocalToCloud,testCloudConnection,uploading,cloudLoading,
+      cloud,resolveCloud,retryCloud,dismissCloudNotice,createCloudSnapshot
     }}>{children}</C.Provider>
   )
 }

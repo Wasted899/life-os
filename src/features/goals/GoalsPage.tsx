@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {useData} from '../context/DataContext'
+import {useData} from '../../context/DataContext'
 export default function Goals(){
   const{goals,addGoal,updateGoal,deleteGoal}=useData()
   const[tab,setTab]=useState<'yearly'|'monthly'|'weekly'|'daily'>('yearly')

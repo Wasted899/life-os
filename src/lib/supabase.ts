@@ -16,20 +16,7 @@ if(typeof window!=='undefined'&&supabase){
   console.log('%c[Supabase] 已连接，可在控制台使用 window.supabase 测试','color:#10b981;font-weight:bold')
 }
 
-// ========== 类型定义 ==========
-export type Todo={id:string;title:string;priority:string;due_date?:string;due_time?:string;completed:boolean;list_id:string;category_id?:string;pinned:boolean;status:string;source:string;habit_id?:string;completed_at?:string}
-export type TodoList={id:string;name:string;color:string;icon:string}
-export type Category={id:string;name:string;color:string}
-export type Goal={id:string;title:string;type:string;parent_id?:string;progress:number;status:string;description?:string}
-export type Habit={id:string;title:string;frequency:string;custom_days?:number[];check_dates:string[];category_id?:string}
-export type ImportantDay={id:string;title:string;date:string;category:string;pinned:boolean;type:'countdown'|'countup'}
-export type TimeBlock={id:string;date:string;start:number;end:number;title:string;category:string;source?:string}
-export type Pomodoro={id:string;date:string;duration:number;task:string;completed:boolean;mode:string}
-export type Transaction={id:string;date:string;type:string;category:string;amount:number;account:string;note?:string}
-export type Memo={id:string;title?:string;content:string;category:string;pinned:boolean;completed:boolean;created_at:string}
-export type FinanceCategory={id:string;name:string;type:'expense'|'income';color:string;icon:string}
-export type Account={id:string;name:string;balance:number;icon:string}
-export type Recurring={id:string;name:string;amount:number;cycle:'monthly'|'yearly';day:number;category:string;account:string;start_date:string}
+// 类型定义已收口到 src/core/types.ts（单一真源）
 
 // ========== 云端数据操作辅助函数 ==========
 // 所有函数都需要已登录且supabase不为null时才调用
@@ -41,7 +28,8 @@ export async function getUserId():Promise<string|null>{
   return user?.id||null
 }
 
-// 从云端拉取整张表（自动按user_id过滤，RLS也会兜底）
+// 从云端拉取整张表（宽松版：出错返回空数组，无法区分"网络失败"与"云端为空"）
+// @deprecated 云同步判定请使用 fetchTableStrict / fetchAllTablesStrict，避免把失败当成空数据
 export async function fetchTable(table:string):Promise<any[]>{
   if(!supabase)return []
   const{data,error}=await supabase.from(table).select('*')
@@ -49,13 +37,128 @@ export async function fetchTable(table:string):Promise<any[]>{
   return data||[]
 }
 
+/** 读取失败（网络 / RLS / 表不存在 / 返回非数组），必须与"云端为空"严格区分 */
+export class CloudReadError extends Error{
+  table:string
+  code?:string
+  constructor(table:string,message:string,code?:string,cause?:unknown){
+    super(message)
+    this.name='CloudReadError'
+    this.table=table
+    this.code=code
+    ;(this as any).cause=cause
+  }
+}
+
+/** 严格读取单表：任何 error 一律抛出，绝不静默返回 [] */
+export async function fetchTableStrict(table:string):Promise<any[]>{
+  if(!supabase)throw new CloudReadError(table,'Supabase 未配置')
+  const{data,error}=await supabase.from(table).select('*')
+  if(error)throw new CloudReadError(table,error.message,error.code,error)
+  if(!Array.isArray(data))throw new CloudReadError(table,'云端返回的数据不是数组')
+  return data
+}
+
+/**
+ * 并发读取多表：保留成功表供排查，但只要有一张失败就 ok=false。
+ * 调用方在 ok=false 时必须保持本地数据不变。
+ */
+export async function fetchAllTablesStrict(tables:string[]):Promise<{ok:boolean;data:Record<string,any[]>;failed:string[]}>{
+  const results=await Promise.allSettled(tables.map(t=>fetchTableStrict(t)))
+  const data:Record<string,any[]>={}
+  const failed:string[]=[]
+  results.forEach((result,index)=>{
+    const table=tables[index]
+    if(result.status==='fulfilled')data[table]=result.value
+    else{
+      failed.push(table)
+      console.error(`[云同步] 读取表 ${table} 失败:`,result.reason)
+    }
+  })
+  return{ok:failed.length===0,data,failed}
+}
+
+/** PostgREST 未知列 / 缺表错误判定 */
+export function isMissingColumnError(error:any):boolean{
+  const code=error?.code
+  const message=String(error?.message||'')
+  return code==='PGRST204'||code==='42703'||/Could not find the '.+' column/i.test(message)||/column .+ does not exist/i.test(message)
+}
+
+/** 从错误信息里解析列名（解析不出来返回 null） */
+export function extractMissingColumn(error:any):string|null{
+  const message=String(error?.message||'')
+  const matched=message.match(/Could not find the '([^']+)' column/i)||message.match(/column "?([A-Za-z0-9_]+)"? does not exist/i)
+  return matched?matched[1]:null
+}
+
+/** 本次会话中因云端缺列而被跳过的字段（仅内存，刷新页面后自动恢复） */
+const droppedColumns=new Map<string,Set<string>>()
+const MAX_COLUMN_RETRY=10
+
+export function getDroppedColumns():Record<string,string[]>{
+  const result:Record<string,string[]>={}
+  droppedColumns.forEach((columns,table)=>{result[table]=[...columns]})
+  return result
+}
+
+export function clearDroppedColumns():void{
+  droppedColumns.clear()
+}
+
+const hasOwn=(target:Record<string,unknown>,key:string)=>Object.prototype.hasOwnProperty.call(target,key)
+
+const filterDropped=(table:string,row:any):any=>{
+  const dropped=droppedColumns.get(table)
+  if(!dropped||dropped.size===0)return row
+  const copy={...row}
+  dropped.forEach(column=>{delete copy[column]})
+  return copy
+}
+
+const markDropped=(table:string,column:string):void=>{
+  let set=droppedColumns.get(table)
+  if(!set){set=new Set();droppedColumns.set(table,set)}
+  if(set.has(column))return
+  set.add(column)
+  // 该文案会直接出现在用户控制台里，必须让人看懂发生了什么、下一步做什么
+  console.warn(`[云同步] 云端结构未更新，已自动丢弃字段 ${column}（表 ${table}），本次不会写入该字段。请尽快执行 supabase_schema.sql 更新数据库结构。`)
+}
+
+
+/**
+ * 执行一次写入；若云端缺少字段（PGRST204），裁掉该字段后重试。
+ * 用于 SQL 尚未执行、表结构仍是旧版的过渡期：新字段写不进去，但旧字段照常同步，绝不整批失败。
+ */
+async function writeWithColumnFallback(
+  table:string,
+  rows:any[],
+  exec:(payload:any[])=>PromiseLike<{error:any}>
+):Promise<void>{
+  let payload=rows.map(row=>filterDropped(table,row))
+  for(let attempt=0;attempt<=MAX_COLUMN_RETRY;attempt++){
+    const{error}=await exec(payload)
+    if(!error)return
+    const column=isMissingColumnError(error)?extractMissingColumn(error):null
+    if(!column||!payload.some(row=>hasOwn(row,column))){
+      console.error(`insert ${table} error:`,error)
+      throw error
+    }
+    markDropped(table,column)
+    payload=rows.map(row=>filterDropped(table,row))
+  }
+  throw new Error(`写入表 ${table} 失败：连续 ${MAX_COLUMN_RETRY} 次因云端缺少字段被拒绝，请先执行 supabase_schema.sql 更新结构`)
+}
+
 // 插入单行（自动加上user_id，满足RLS的with check）
 export async function insertRow(table:string,row:any):Promise<void>{
   if(!supabase)return
   const userId=await getUserId()
   const rowWithUser=userId?{...row,user_id:userId}:row
-  const{error}=await supabase.from(table).insert(rowWithUser)
-  if(error){console.error(`insert ${table} error:`,error);throw error}
+  await writeWithColumnFallback(table,[rowWithUser],async payload=>{
+    const{error}=await supabase!.from(table).insert(payload)
+    return{error}
+  })
 }
 
 // 批量插入（用于上传本地数据，自动给每条加上user_id）
@@ -65,16 +168,33 @@ export async function batchInsert(table:string,rows:any[]):Promise<void>{
   // 分批，每批500条
   for(let i=0;i<rows.length;i+=500){
     const batch=rows.slice(i,i+500).map(r=>userId?{...r,user_id:userId}:r)
-    const{error}=await supabase.from(table).insert(batch)
-    if(error){console.error(`batch insert ${table} error:`,error);throw error}
+    await writeWithColumnFallback(table,batch,async payload=>{
+      const{error}=await supabase!.from(table).insert(payload)
+      return{error}
+    })
   }
 }
 
 // 更新单行
 export async function updateRow(table:string,id:string,patch:any):Promise<void>{
   if(!supabase)return
-  const{error}=await supabase.from(table).update(patch).eq('id',id)
-  if(error)console.error(`update ${table} error:`,error)
+  let payload=filterDropped(table,patch)
+  for(let attempt=0;attempt<=MAX_COLUMN_RETRY;attempt++){
+    if(Object.keys(payload).length===0){
+      console.warn(`[云同步] 表 ${table} 的更新字段全部被云端结构拒绝，已跳过本次更新（id=${id}）。请尽快执行 supabase_schema.sql。`)
+      return
+    }
+    const{error}=await supabase.from(table).update(payload).eq('id',id)
+    if(!error)return
+    const column=isMissingColumnError(error)?extractMissingColumn(error):null
+    if(!column||!hasOwn(payload,column)){
+      console.error(`update ${table} error:`,error)
+      return
+    }
+    markDropped(table,column)
+    payload=filterDropped(table,patch)
+  }
+  console.error(`update ${table} error: 连续 ${MAX_COLUMN_RETRY} 次因云端缺少字段被拒绝，已跳过本次更新`)
 }
 
 // 删除单行

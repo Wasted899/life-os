@@ -1,37 +1,33 @@
+import {lazy,Suspense} from 'react'
+import type {ComponentType,LazyExoticComponent,ReactNode} from 'react'
 import {HashRouter,Routes,Route} from 'react-router-dom'
-import Layout from './components/Layout'
-import Today from './pages/Today'
-import Todos from './pages/Todos'
-import Goals from './pages/Goals'
-import Habits from './pages/Habits'
-import ImportantDays from './pages/ImportantDays'
-import Calendar from './pages/Calendar'
-import TimeStats from './pages/TimeStats'
-import Pomodoro from './pages/Pomodoro'
-import Review from './pages/Review'
-import Memos from './pages/Memos'
-import Finance from './pages/Finance'
-import Settings from './pages/Settings'
-import GuidePage from './pages/GuidePage'
-import Login from './pages/Login'
+import Layout from './app/Layout'
+import ErrorBoundary from './app/ErrorBoundary'
+import CloudSyncGate from './app/CloudSyncGate'
 import {useAuth} from './context/AuthContext'
-import {Component,ReactNode} from 'react'
+import {ROUTE_DEFS} from './core/nav'
+import type {ModuleId} from './core/types'
 
-class ErrorBoundary extends Component<{children:ReactNode},{hasError:boolean}>{
-  constructor(p:{children:ReactNode}){super(p);this.state={hasError:false}}
-  static getDerivedStateFromError(){return{hasError:true}}
-  componentDidCatch(e:any){console.error('页面错误:',e)}
-  render(){
-    if(this.state.hasError)return(
-      <div style={{padding:60,textAlign:'center'}}>
-        <h2>页面加载出错</h2>
-        <p style={{color:'#64748b',margin:'12px 0'}}>数据可能有问题，请刷新页面重试</p>
-        <button className="btn btn-primary" onClick={()=>window.location.reload()}>刷新</button>
-      </div>
-    )
-    return this.props.children
-  }
+// 页面懒加载映射：核心模块只保留"元数据 + 加载器"，不 import 页面实现
+const PAGES:Record<ModuleId,LazyExoticComponent<ComponentType>>={
+  today:lazy(()=>import('./features/today/TodayPage')),
+  todos:lazy(()=>import('./features/todos/TodosPage')),
+  goals:lazy(()=>import('./features/goals/GoalsPage')),
+  habits:lazy(()=>import('./features/habits/HabitsPage')),
+  importantDays:lazy(()=>import('./features/importantDays/ImportantDaysPage')),
+  calendar:lazy(()=>import('./features/calendar/CalendarPage')),
+  timeStats:lazy(()=>import('./features/timeStats/TimeStatsPage')),
+  pomodoro:lazy(()=>import('./features/pomodoro/PomodoroPage')),
+  review:lazy(()=>import('./features/review/ReviewPage')),
+  memos:lazy(()=>import('./features/memos/MemosPage')),
+  finance:lazy(()=>import('./features/finance/FinancePage')),
+  guide:lazy(()=>import('./features/guide/GuidePage')),
+  settings:lazy(()=>import('./features/settings/SettingsPage')),
 }
+
+const LoginPage=lazy(()=>import('./features/auth/LoginPage'))
+
+const RouteFallback=()=> <div style={{padding:40,textAlign:'center'}}>加载中...</div>
 
 // 路由守卫：只处理加载状态，不强制登录（用户可选择本地模式）
 function AppGuard({children}:{children:ReactNode}){
@@ -43,29 +39,24 @@ function AppGuard({children}:{children:ReactNode}){
 export default function App(){
   return(
     <HashRouter>
+      {/* 云同步弹窗挂在根层：/login 与主应用都能看到 */}
+      <CloudSyncGate/>
       <Routes>
         {/* 登录页（独立布局，不需要侧边栏） */}
-        <Route path="/login" element={<Login/>}/>
+        <Route path="/login" element={<Suspense fallback={<RouteFallback/>}><LoginPage/></Suspense>}/>
         {/* 主应用（所有页面都可直接访问，不强制登录） */}
         <Route path="/*" element={
           <AppGuard>
             <Layout>
               <ErrorBoundary>
-                <Routes>
-                  <Route path="/" element={<Today/>}/>
-                  <Route path="/todos" element={<Todos/>}/>
-                  <Route path="/goals" element={<Goals/>}/>
-                  <Route path="/habits" element={<Habits/>}/>
-                  <Route path="/days" element={<ImportantDays/>}/>
-                  <Route path="/calendar" element={<Calendar/>}/>
-                  <Route path="/time" element={<TimeStats/>}/>
-                  <Route path="/pomodoro" element={<Pomodoro/>}/>
-                  <Route path="/review" element={<Review/>}/>
-                  <Route path="/memos" element={<Memos/>}/>
-                  <Route path="/finance" element={<Finance/>}/>
-                  <Route path="/settings" element={<Settings/>}/>
-                  <Route path="/guide/:type" element={<GuidePage/>}/>
-                </Routes>
+                <Suspense fallback={<RouteFallback/>}>
+                  <Routes>
+                    {ROUTE_DEFS.map(({path,module})=>{
+                      const Page=PAGES[module]
+                      return<Route key={path} path={path} element={<Page/>}/>
+                    })}
+                  </Routes>
+                </Suspense>
               </ErrorBoundary>
             </Layout>
           </AppGuard>

@@ -1,7 +1,8 @@
 import {useState,useEffect} from 'react'
-import {useData} from '../context/DataContext'
+import {useData} from '../../context/DataContext'
 import dayjs from 'dayjs'
-type ReviewTab='daily'|'weekly'|'monthly'|'yearly'
+import type {ReviewPeriod} from '../../core/types'
+type ReviewTab=ReviewPeriod
 export default function Review(){
   const{todos,habits,timeBlocks}=useData()
   const[tab,setTab]=useState<ReviewTab>('daily')

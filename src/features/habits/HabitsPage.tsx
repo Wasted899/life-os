@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {useData} from '../context/DataContext'
+import {useData} from '../../context/DataContext'
 import dayjs from 'dayjs'
 const weekDays=[{d:0,name:'日'},{d:1,name:'一'},{d:2,name:'二'},{d:3,name:'三'},{d:4,name:'四'},{d:5,name:'五'},{d:6,name:'六'}]
 export default function Habits(){

@@ -1,5 +1,5 @@
 import {useState} from 'react'
-import {useData} from '../context/DataContext'
+import {useData} from '../../context/DataContext'
 import dayjs from 'dayjs'
 import {Link} from 'react-router-dom'
 export default function Today(){

@@ -1,6 +1,7 @@
 import {createContext,useContext,useEffect,useState,ReactNode} from 'react'
 import {supabase,isCloudMode} from '../lib/supabase'
-type User={id:string;email:string}|null
+import type {AuthUser} from '../core/types'
+type User=AuthUser|null
 const C=createContext<{user:User;loading:boolean;signIn:(e:string,p:string)=>Promise<void>;signUp:(e:string,p:string)=>Promise<void>;signOut:()=>Promise<void>}>({user:null,loading:true,signIn:async()=>{},signUp:async()=>{},signOut:async()=>{}})
 export function AuthProvider({children}:{children:ReactNode}){
   const[user,setUser]=useState<User>(null)

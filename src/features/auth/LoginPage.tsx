@@ -1,7 +1,7 @@
 import {useState} from 'react'
-import {useAuth} from '../context/AuthContext'
-import {useData} from '../context/DataContext'
-import {isCloudMode} from '../lib/supabase'
+import {useAuth} from '../../context/AuthContext'
+import {useData} from '../../context/DataContext'
+import {isCloudMode} from '../../lib/supabase'
 
 export default function Login(){
   const{user,signIn,signUp,signOut}=useAuth()

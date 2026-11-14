@@ -3,6 +3,7 @@ import {NavLink} from 'react-router-dom'
 import {useTheme} from '../context/ThemeContext'
 import {useAuth} from '../context/AuthContext'
 import dayjs from 'dayjs'
+import {NAV_GROUPS} from '../core/nav'
 const quotes=[
   "我名叫志气还有恒心，我早晚要闯出一番名堂 —— Asen",
   "每天翻山越岭老子必须爬更高 —— Asen",
@@ -47,34 +48,6 @@ const quotes=[
   "你今天的努力，是幸运的伏笔。",
   "幸福不是拥有你想要的，而是珍惜你拥有的。",
 ]
-const navGroups=[
-  {title:'规划',items:[
-    {to:'/',label:'今日',icon:'📅'},
-    {to:'/todos',label:'待办清单',icon:'✅'},
-    {to:'/goals',label:'目标管理',icon:'🎯'},
-    {to:'/habits',label:'习惯打卡',icon:'🔥'},
-    {to:'/days',label:'重要日子',icon:'⏰'},
-    {to:'/calendar',label:'日历',icon:'📆'},
-    {to:'/time',label:'时间统计',icon:'⏱️'},
-    {to:'/pomodoro',label:'番茄钟',icon:'🍅'},
-    {to:'/review',label:'复盘',icon:'📝'},
-  ]},
-  {title:'生活',items:[
-    {to:'/memos',label:'备忘录',icon:'📝'},
-    {to:'/finance',label:'记账',icon:'💰'},
-  ]},
-  {title:'指南',items:[
-    {to:'/guide/baoyan',label:'保研指南',icon:'🎓'},
-    {to:'/guide/intern',label:'实习攻略',icon:'💼'},
-    {to:'/guide/contest',label:'竞赛指南',icon:'🏆'},
-    {to:'/guide/coding',label:'编程路线',icon:'💻'},
-    {to:'/guide/cet4',label:'四级备考',icon:'📖'},
-    {to:'/guide/kaoyan',label:'考研指南',icon:'📚'},
-    {to:'/guide/scholarship',label:'奖学金攻略',icon:'🏅'},
-    {to:'/guide/tips',label:'避坑提醒',icon:'⚠️'},
-  ]},
-  {title:'设置',items:[{to:'/settings',label:'设置',icon:'⚙️'}]},
-]
 export default function Layout({children}:{children:ReactNode}){
   const{user,signOut}=useAuth()
   const[qi,setQi]=useState(()=>{const d=dayjs();return(d.year()+d.month()+d.date())%quotes.length})
@@ -90,7 +63,7 @@ export default function Layout({children}:{children:ReactNode}){
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-brand">📋 规划助手</div>
-        {navGroups.map(g=>(<div key={g.title}><div className="sidebar-group-title">{g.title}</div>{g.items.map(i=>(<NavLink key={i.to} to={i.to} className="sidebar-item" end={i.to==='/'}><span>{i.icon}</span><span>{i.label}</span></NavLink>))}</div>))}
+        {NAV_GROUPS.map(g=>(<div key={g.id}><div className="sidebar-group-title">{g.title}</div>{g.items.map(i=>(<NavLink key={i.to} to={i.to} className="sidebar-item" end={i.to==='/'}><span>{i.icon}</span><span>{i.label}</span></NavLink>))}</div>))}
       </aside>
       <main className="main-content">
         <header className="header">
