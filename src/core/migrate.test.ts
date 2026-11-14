@@ -118,3 +118,73 @@ describe('normalizeLocalData 端到端', () => {
     expect(twice.lists).toEqual(once.lists)
   })
 })
+
+describe('M1-17 目标规范化', () => {
+  const goalsOf = (goals: Record<string, unknown>[]) => {
+    const result = normalizeLocalData({goals})
+    return {byId:new Map(result.data.goals.map(goal => [goal.id,goal])),issues:result.report.issues}
+  }
+
+  it('level 推导：显式 level > 旧 type > period_key 形状 > year', () => {
+    const {byId} = goalsOf([
+      {id:'a',title:'显式',level:'week',type:'yearly',period_key:'2026-W46'},
+      {id:'b',title:'旧 type',type:'monthly'},
+      {id:'c',title:'只有周键',period_key:'2026-W46'},
+      {id:'d',title:'什么都没有'},
+    ])
+    expect(byId.get('a')!.level).toBe('week')
+    expect(byId.get('b')!.level).toBe('month')
+    expect(byId.get('c')!.level).toBe('week')
+    expect(byId.get('d')!.level).toBe('year')
+    expect(byId.get('d')!.type).toBe('yearly')
+  })
+
+  it('period_key 规范化并补零：2026-3 → 2026-03，2026-W6 → 2026-W06', () => {
+    const {byId} = goalsOf([
+      {id:'m',title:'月',type:'monthly',period_key:'2026-3'},
+      {id:'w',title:'周',type:'weekly',period_key:'2026-W6'},
+    ])
+    expect(byId.get('m')!.period_key).toBe('2026-03')
+    expect(byId.get('w')!.period_key).toBe('2026-W06')
+  })
+
+  it('旧目标缺 period_key：按 start_date 推导，推不出落当前周期', () => {
+    const year = String(new Date().getFullYear())
+    const {byId} = goalsOf([
+      {id:'y',title:'年',type:'yearly',start_date:'2026-03-15'},
+      {id:'m',title:'月',type:'monthly',start_date:'2026/3/15'},
+      {id:'now',title:'无日期',type:'monthly'},
+    ])
+    expect(byId.get('y')!.period_key).toBe('2026')
+    expect(byId.get('m')!.period_key).toBe('2026-03')
+    expect(byId.get('now')!.period_key).toBe(`${year}-${String(new Date().getMonth()+1).padStart(2,'0')}`)
+  })
+
+  it('progress 夹到 0–100 整数', () => {
+    const {byId} = goalsOf([
+      {id:'hi',title:'超上限',progress:150},
+      {id:'lo',title:'负值',progress:-20},
+      {id:'bad',title:'非数字',progress:'abc'},
+      {id:'frac',title:'小数',progress:42.6},
+    ])
+    expect(byId.get('hi')!.progress).toBe(100)
+    expect(byId.get('lo')!.progress).toBe(0)
+    expect(byId.get('bad')!.progress).toBe(0)
+    expect(byId.get('frac')!.progress).toBe(43)
+  })
+
+  it('非法父子关系解绑：父不存在 / 自指 / 跨级，合法关系保留', () => {
+    const {byId,issues} = goalsOf([
+      {id:'y',title:'年度',type:'yearly',period_key:'2026'},
+      {id:'m',title:'三月',type:'monthly',period_key:'2026-03',parent_id:'y'},
+      {id:'ghost',title:'父不存在',type:'monthly',period_key:'2026-04',parent_id:'nope'},
+      {id:'self',title:'自指',type:'monthly',period_key:'2026-05',parent_id:'self'},
+      {id:'cross',title:'跨级',type:'daily',period_key:'2026-06-01',parent_id:'y'},
+    ])
+    expect(byId.get('m')!.parent_id).toBe('y')
+    expect(byId.get('ghost')!.parent_id).toBeUndefined()
+    expect(byId.get('self')!.parent_id).toBeUndefined()
+    expect(byId.get('cross')!.parent_id).toBeUndefined()
+    expect(issues.some(issue => issue.code === 'goal-parent-repaired')).toBe(true)
+  })
+})

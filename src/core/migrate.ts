@@ -19,8 +19,16 @@
  * from = '*' 表示"旧结构没有来源字段"，该条只用于声明默认值或"保持 undefined"。
  */
 
+import dayjs from 'dayjs'
 import { uid } from './storage'
 import { sanitizeAll } from '../lib/sanitize'
+import {
+  isGoalLevel,
+  legacyTypeOfLevel,
+  normalizePeriodKey,
+  periodKeyFor,
+  repairGoalForest,
+} from '../features/goals/goalTree'
 import type {
   Account,
   AppSettings,
@@ -29,6 +37,7 @@ import type {
   DomainKey,
   FinanceCategory,
   Goal,
+  GoalLevel,
   GuideEntry,
   Habit,
   ImportantDay,
@@ -148,14 +157,14 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: 'name', to: 'title', kind: 'merge', note: '待真实数据验证' },
     { from: 'period', to: 'type', kind: 'merge', note: '旧别名，待真实数据验证' },
     { from: 'type', to: 'type', kind: 'keep', note: '旧值 yearly/monthly/weekly/daily' },
-    { from: 'type', to: 'level', kind: 'coerce', note: 'yearly→year、monthly→month、weekly→week、daily→day；其余保持 undefined' },
+    { from: 'type', to: 'level', kind: 'coerce', note: 'M1-17：显式 level → period_key 形状 → type/period 别名 → year' },
     { from: 'parentId', to: 'parent_id', kind: 'merge', note: 'null 需转 undefined' },
     { from: 'progress', to: 'progress', kind: 'coerce', note: '非数字转 0' },
     { from: '*', to: 'progress', kind: 'default', defaultValue: 0 },
     { from: 'status', to: 'status', kind: 'keep' },
     { from: '*', to: 'status', kind: 'default', defaultValue: 'active' },
     { from: 'desc', to: 'description', kind: 'merge', note: 'description 缺失时兜底' },
-    { from: '*', to: 'period_key', kind: 'default', note: '旧结构无来源，待 D3 决策后由 level+日期派生' },
+    { from: '*', to: 'period_key', kind: 'default', note: 'M1-17：规范化到 level 形状；缺失/非法时按 start_date 推导，推不出落当前周期' },
     { from: '*', to: 'start_date', kind: 'default', note: '旧结构无来源，保持 undefined' },
     { from: '*', to: 'end_date', kind: 'default', note: '旧结构无来源，保持 undefined' },
   ],
@@ -303,6 +312,7 @@ export type MigrationIssueCode =
   | 'missing-id'
   | 'unknown-key-kept'
   | 'ref-repaired'
+  | 'goal-parent-repaired'
 
 export interface MigrationIssue {
   domain: DomainKey | 'root'
@@ -527,21 +537,49 @@ function normalizeCategory(item: Record<string, unknown>): Category {
   return out as unknown as Category
 }
 
+/**
+ * 目标规范化（M1-17）：
+ * - level 推导优先级：显式 level → period_key 形状 → 旧 type/period → year
+ *   （sanitize 会无条件补 type='yearly'，因此 period_key 形状必须排在 type 之前）
+ * - period_key 规范化为当前 level 的形状；缺失/非法时按 start_date 推导，推不出落当前周期
+ * - progress 夹到 0–100 整数
+ * 父子关系合法性（父不存在 / 自指 / 层级不匹配 / 成环）由 repairGoalForest 统一处理。
+ */
 function normalizeGoal(item: Record<string, unknown>): Goal {
   const out = { ...item } as Record<string, unknown>
   out.id = asText(item.id) || uid()
   out.title = asText(pick(item.title, item.name)) || '未命名目标'
-  out.type = asOptionalText(pick(item.type, item.period)) || 'yearly'
-  const level = GOAL_LEVELS[asText(out.type)]
-  if (level) out.level = level
-  else delete out.level
+
+  let level: GoalLevel | null = isGoalLevel(item.level) ? item.level : null
+  if (!level) {
+    // period_key 形状兜底：旧数据可能只有周期键没有 type
+    const shape = asOptionalText(item.period_key)
+    if (shape) {
+      level = (['year', 'month', 'week', 'day'] as GoalLevel[]).find(
+        (candidate) => normalizePeriodKey(candidate, shape) !== null,
+      ) ?? null
+    }
+  }
+  if (!level) {
+    const legacyType = asOptionalText(pick(item.type, item.period))
+    if (legacyType) level = (GOAL_LEVELS[legacyType] as GoalLevel | undefined) ?? null
+  }
+  const finalLevel: GoalLevel = level || 'year'
+  out.level = finalLevel
+  // type 是旧字段，统一收敛到 level 对应的旧枚举值，避免新旧字段矛盾
+  out.type = legacyTypeOfLevel(finalLevel)
+
+  const startDate = asDate(item.start_date)
+  const start = startDate ? dayjs(startDate) : null
+  out.period_key = normalizePeriodKey(finalLevel, item.period_key)
+    || (start && start.isValid() ? periodKeyFor(finalLevel, start) : periodKeyFor(finalLevel, dayjs()))
+  out.start_date = startDate
+  out.end_date = asDate(item.end_date)
+
   out.parent_id = asOptionalText(pick(item.parent_id, item.parentId))
-  out.progress = asNum(item.progress, 0)
+  out.progress = Math.min(100, Math.max(0, Math.round(asNum(item.progress, 0))))
   out.status = asOptionalText(item.status) || 'active'
   out.description = asText(pick(item.description, item.desc))
-  out.period_key = asOptionalText(item.period_key)
-  out.start_date = asDate(item.start_date)
-  out.end_date = asDate(item.end_date)
   delete out.name
   delete out.period
   delete out.parentId
@@ -969,6 +1007,20 @@ export function migrate(raw: unknown): MigrationResult {
         path: 'todos[*].list_id/category_id',
         code: 'ref-repaired',
         note: `孤儿清单 ${repaired.orphanList}，缺失清单 ${repaired.missingList}，孤儿分类 ${repaired.orphanCategory}，清单误用为分类 ${repaired.crossCategory}`,
+      })
+    }
+  }
+
+  // 目标树：解绑非法父子关系（父不存在 / 自指 / 层级不相邻 / 成环）
+  if (Array.isArray(source.goals) && data.goals.length > 0) {
+    const repaired = repairGoalForest(data.goals)
+    if (repaired.changed > 0) {
+      data.goals = repaired.goals
+      issues.push({
+        domain: 'goals',
+        path: 'goals[*].parent_id',
+        code: 'goal-parent-repaired',
+        note: `解绑 ${repaired.changed} 个非法父目标引用（父不存在 / 自指 / 层级不匹配 / 成环）`,
       })
     }
   }
