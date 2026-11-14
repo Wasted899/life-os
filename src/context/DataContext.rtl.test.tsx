@@ -253,4 +253,53 @@ describe('DataContext 习惯排期（M1-13）',()=>{
     // 若出现死循环，这两个值会持续增长而不是停在 2 / 1
     expect({frequencyRenders,frequencyWrites}).toEqual({frequencyRenders:2,frequencyWrites:1})
   })
+
+  it('删除习惯：清理未完成待办、解绑已完成待办与习惯时间块，不误删其它时间块',async()=>{
+    h.auth.user={id:'user-A',email:'a@test.local'}
+    render(tree())
+    act(()=>{ctx.addHabit({title:'跑步',frequency:'daily',check_dates:[]} as any)})
+    const habitId=ctx.habits[0].id
+    await waitFor(()=>expect(ctx.todos.filter(t=>t.habit_id===habitId).length).toBeGreaterThan(1))
+
+    const today=dayjs().format('YYYY-MM-DD')
+    act(()=>{
+      ctx.addTimeBlock({date:today,start:9,end:10,title:'习惯时间',category:'学习',source:'habit',ref_type:'habit',ref_id:habitId})
+      ctx.addTimeBlock({date:today,start:10,end:11,title:'手动时间',category:'学习',source:'manual'})
+      ctx.addTimeBlock({date:today,start:11,end:12,title:'任务时间',category:'学习',source:'todo',ref_type:'todo',ref_id:'todo-x'})
+    })
+    const habitBlock=ctx.timeBlocks.find(tb=>tb.ref_id===habitId)!
+    const manualBlock=ctx.timeBlocks.find(tb=>tb.title==='手动时间')!
+    const todoBlock=ctx.timeBlocks.find(tb=>tb.ref_id==='todo-x')!
+    expect(habitBlock).toBeTruthy()
+
+    // 完成一条，验证历史记录不会被删除
+    const linked=ctx.todos.filter(t=>t.habit_id===habitId)
+    const done=linked[0]
+    const unfinished=linked.slice(1)
+    act(()=>ctx.updateTodo(done.id,{completed:true}))
+
+    act(()=>ctx.deleteHabit(habitId))
+
+    expect(ctx.habits).toHaveLength(0)
+    // 不存在指向已删习惯的孤儿待办
+    expect(ctx.todos.every(t=>t.habit_id!==habitId)).toBe(true)
+    // 未完成待办被删除，已完成待办保留但解绑
+    const doneAfter=ctx.todos.find(t=>t.id===done.id)!
+    expect(doneAfter).toBeTruthy()
+    expect(doneAfter.completed).toBe(true)
+    expect(doneAfter.habit_id).toBeUndefined()
+    unfinished.forEach(todo=>expect(ctx.todos.some(t=>t.id===todo.id)).toBe(false))
+
+    // 时间块全部保留：习惯块只解绑，其它来源原样不动
+    expect(ctx.timeBlocks).toHaveLength(3)
+    expect(ctx.timeBlocks.find(tb=>tb.id===habitBlock.id)).toMatchObject({title:'习惯时间',ref_type:undefined,ref_id:undefined})
+    expect(ctx.timeBlocks.find(tb=>tb.id===manualBlock.id)).toBe(manualBlock)
+    expect(ctx.timeBlocks.find(tb=>tb.id===todoBlock.id)).toBe(todoBlock)
+
+    // 云端：未完成待办删除；已完成待办与习惯时间块只解绑
+    unfinished.forEach(todo=>expect(h.deleteRow).toHaveBeenCalledWith('todos',todo.id))
+    expect(h.updateRow).toHaveBeenCalledWith('todos',done.id,{habit_id:null})
+    expect(h.updateRow).toHaveBeenCalledWith('time_blocks',habitBlock.id,{ref_type:null,ref_id:null})
+    expect(h.deleteRow).not.toHaveBeenCalledWith('time_blocks',habitBlock.id)
+  })
 })

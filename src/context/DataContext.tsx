@@ -518,11 +518,28 @@ export function DataProvider({children}:{children:ReactNode}){
   useEffect(()=>{syncHabitsToTodos()},[habitPlanKey,syncHabitsToTodos])
 
   const deleteHabit=(id:string)=>{
+    const linkedTodos=todos.filter(td=>td.habit_id===id)
+    const removeTodos=linkedTodos.filter(td=>!td.completed)
+    const unbindTodos=linkedTodos.filter(td=>td.completed)
+    // 时间块代表真实发生的时间，不随习惯删除而消失；只解绑指向该习惯的引用
+    const linkedBlocks=timeBlocks.filter(tb=>tb.ref_type==='habit'&&tb.ref_id===id)
+
     h.del(id)
-    setTodos(prev=>prev.filter(td=>!(td.habit_id===id&&!td.completed)))
-    // 云端删除习惯时，同时删除其未完成待办
+    if(removeTodos.length||unbindTodos.length){
+      const removeIds=new Set(removeTodos.map(td=>td.id))
+      const unbindIds=new Set(unbindTodos.map(td=>td.id))
+      setTodos(prev=>prev
+        .filter(td=>!removeIds.has(td.id))
+        .map(td=>unbindIds.has(td.id)?{...td,habit_id:undefined}:td))
+    }
+    if(linkedBlocks.length){
+      const blockIds=new Set(linkedBlocks.map(tb=>tb.id))
+      setTimeBlocks(prev=>prev.map(tb=>blockIds.has(tb.id)?{...tb,ref_type:undefined,ref_id:undefined}:tb))
+    }
     if(loggedIn&&isCloudMode){
-      todos.filter(td=>td.habit_id===id&&!td.completed).forEach(td=>deleteRow('todos',td.id))
+      removeTodos.forEach(td=>deleteRow('todos',td.id))
+      unbindTodos.forEach(td=>updateRow('todos',td.id,{habit_id:null}))
+      linkedBlocks.forEach(tb=>updateRow('time_blocks',tb.id,{ref_type:null,ref_id:null}))
     }
   }
 
