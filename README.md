@@ -1,64 +1,92 @@
-# 个人规划助手 v6.0.0
+# 个人规划助手
 
-功能完整的个人规划管理 Web 应用，React + Vite + TypeScript 原生实现。
-
-## 功能模块
-
-- 🏠 **今日首页**：待办统计、习惯打卡、目标进度、重要日子、每日一言
-- ✅ **待办清单**：多清单管理、四象限分类、列表/看板视图、批量操作、习惯自动同步（严格去重）
-- 🎯 **目标管理**：年度/月度/周/日四级目标拆解
-- 🔥 **习惯打卡**：自定义周期、连续天数、用时联动时间统计
-- ⏰ **重要日子**：倒计时/正计时、分类管理、置顶
-- 📆 **日历**：月/周/日/年四视图
-- ⏱️ **时间统计**：24小时轮盘饼图、分类统计、批量删除
-- 🍅 **番茄钟**：倒计时/正计时、任务关联、结束铃声、日/周/月/年统计
-- 📝 **复盘**：每日/每周/每月/每年复盘
-- 📝 **备忘录**：分类管理、便签展示、置顶
-- 💰 **记账**：流水/统计/预算/账户/周期账单/年度六视图
-- 📚 **指南**：保研/实习/竞赛/编程/四级/考研/奖学金/避坑
-- ⚙️ **设置**：个人资料、主题皮肤（自定义+本地图片+透明度+毛玻璃）、功能管理、数据导入导出
-
-## 快速开始
-
-```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # 产物在 dist/
-npm run preview  # 预览生产版本
-```
-
-## 核心特性
-
-### 习惯同步待办（严格去重）
-- 每个习惯按频率生成未来14天待办
-- 唯一键：`habit_id + due_date`，每天每条习惯最多一个待办
-- 删除习惯时清理未完成待办，修改频率时重新生成
-
-### 旧数据兼容
-- 初始化和导入JSON时全面修复14个数据集
-- 缺失字段自动补全，旧频率格式自动迁移
-- 全局可选链容错，防止脏数据白屏
-
-### 主题皮肤
-- 6个预设主题 + 无限自定义主题
-- 支持本地图片上传、透明度、毛玻璃强度调节
-
-### PWA支持
-- 构建后可安装到手机桌面，支持离线访问
-
-## 云同步（可选）
-
-1. 注册 supabase.com，创建项目
-2. SQL Editor 执行 `supabase_schema.sql`
-3. 复制 `.env.example` 为 `.env`，填入URL和anon-key
-4. 重启 `npm run dev`
-
-## 部署到Vercel
-
-1. 推送到GitHub
-2. vercel.com 导入仓库，Framework选Vite
-3. 配置环境变量后Deploy
+一个本地优先的个人规划管理 Web 应用：把待办、目标、习惯、时间统计、复盘、记账、日历等日常管理需求收敛到一个界面里。数据默认保存在浏览器本地，可选接入 Supabase 实现多设备云同步。
 
 ## 技术栈
 
-React 18 + TypeScript + Vite 5 + React Router 6 + dayjs + vite-plugin-pwa"# my-planner" 
+- React 18 + TypeScript
+- Vite 5 + `vite-plugin-pwa`
+- React Router 6（HashRouter，静态托管友好）
+- dayjs
+- Supabase（`@supabase/supabase-js`，可选云同步）
+- Vitest + Testing Library（单元与 React 层测试）
+
+## M1 核心特性
+
+- **多视图待办**：清单 / 四象限 / 列表 / 看板 / 时间线多种视角；支持批量操作、拖拽换象限；删除清单时待办自动迁入「收集箱」。
+- **四层目标树**：年 → 月 → 周 → 日逐级拆解，父子目标按周期校验，进度支持等权汇总；切换周期查看历史目标。
+- **习惯防重复联动**：打卡可顺带记录用时并写入时间统计；习惯与待办联动使用 `habit_id + due_date` 唯一键去重，反复同步不会生成重复待办；删除习惯时清理关联待办并解绑时间块引用。
+- **本地优先与云端覆盖保护**：日常读写走本地存储，云端读取失败时不会进入任何覆盖分支；「用本机覆盖云端」前会先强制抓取云端完整快照写入本地备份，快照不完整则中止操作。
+- **今日首页**：只读聚合当日待办、习惯、目标进度、重要日子与每日一句，不直接改写数据。
+- **每日一句**：按天哈希稳定轮换，支持「换一条」并持久化选择。
+- **PWA**：构建产物可安装到桌面/手机，支持离线打开。
+
+其余模块：日历（月/周/日/年）、时间统计、番茄钟、复盘（日/周/月/年）、重要日子、备忘录、记账（流水/统计/预算/账户/周期账单/年度）、指南、设置（主题皮肤、数据导入导出）。
+
+## 本地启动
+
+环境要求：Node.js 18+。
+
+```bash
+# 1. 安装依赖
+npm install
+
+# 2. 复制环境变量模板（Windows PowerShell 用 Copy-Item）
+cp .env.local.example .env.local
+
+# 3. 编辑 .env.local 填入自己的配置（见下方说明）
+
+# 4. 初始化数据库（需要 DATABASE_URL，只需执行一次；重复执行是幂等的）
+npm run db:setup
+
+# 5. 启动开发服务器
+npm run dev
+```
+
+默认地址：<http://localhost:5173>
+
+### `.env.local` 配置项
+
+| 变量 | 必填 | 用途 |
+| --- | --- | --- |
+| `VITE_SUPABASE_URL` | 接入云同步时必填 | Supabase 项目 URL，形如 `https://<your-project-ref>.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | 接入云同步时必填 | Supabase 项目的 anon public key（不要使用 service_role key） |
+| `DATABASE_URL` | 仅 `npm run db:setup` 需要 | PostgreSQL 连接串，供本地建库脚本使用；不以 `VITE_` 开头，不会打进前端产物 |
+
+`DATABASE_URL` 示例（仅占位符，请替换为自己的值）：
+
+```text
+postgresql://postgres.<project-ref>:<your-password>@<pooler-host>:5432/postgres
+```
+
+不填 Supabase 配置时，应用以纯本地模式运行，功能可用，只是没有多设备同步。`npm run db:setup` 会读取 `supabase_schema.sql` 并在一个事务内建表，任一步失败会回滚。
+
+## 测试与构建
+
+```bash
+npm test            # Vitest 全量测试
+npx tsc --noEmit    # 仅类型检查
+npm run build       # 类型检查 + 生产构建，产物在 dist/
+npm run preview     # 本地预览生产构建
+```
+
+## 目录结构
+
+```text
+src/
+  core/        # 类型、存储、云同步、迁移、通用 UI（Modal 等）
+  context/     # DataContext：13 域数据与读写入口
+  features/    # 按业务域拆分的页面：todos / goals / habits / today / ...
+  styles/      # 全局样式（themes.css）
+scripts/       # setup-db.js 数据库初始化脚本
+supabase_schema.sql
+```
+
+## 云同步（可选）
+
+1. 在 Supabase 创建项目；
+2. 在 SQL Editor 执行 `supabase_schema.sql`，或配置好 `DATABASE_URL` 后运行 `npm run db:setup`；
+3. 将 `.env.local.example` 复制为 `.env.local`，填入 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`；
+4. 重新启动 `npm run dev`。
+
+仓库中不包含任何真实连接串、密钥或项目标识；请只在自己的本地 `.env.local` 中保存。
