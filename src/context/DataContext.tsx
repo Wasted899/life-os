@@ -25,7 +25,7 @@ type Ctx={
   transactions:Transaction[];addTransaction:(t:Omit<Transaction,'id'>)=>void;updateTransaction:(id:string,p:Partial<Transaction>)=>void;deleteTransaction:(id:string)=>void
   memos:Memo[];addMemo:(m:Omit<Memo,'id'>)=>void;updateMemo:(id:string,p:Partial<Memo>)=>void;deleteMemo:(id:string)=>void
   financeCategories:FinanceCategory[];addFinanceCategory:(c:Omit<FinanceCategory,'id'>)=>void;updateFinanceCategory:(id:string,p:Partial<FinanceCategory>)=>void;deleteFinanceCategory:(id:string)=>void
-  accounts:Account[];addAccount:(a:Omit<Account,'id'>)=>void;updateAccount:(id:string,p:Partial<Account>)=>void;deleteAccount:(id:string)=>void
+  accounts:Account[];addAccount:(a:Omit<Account,'id'>)=>Account;updateAccount:(id:string,p:Partial<Account>)=>void;deleteAccount:(id:string)=>void
   recurrings:Recurring[];addRecurring:(r:Omit<Recurring,'id'>)=>void;updateRecurring:(id:string,p:Partial<Recurring>)=>void;deleteRecurring:(id:string)=>void
   /** [M1-19] 本地词库：不进 DomainData / 13 域 / latestRef，云端未接入 */
   quotes:Quote[]
@@ -391,6 +391,7 @@ export function DataProvider({children}:{children:ReactNode}){
       const newItem={...i,id:uid()}as T
       setter(p=>[...p,newItem])
       if(loggedIn&&isCloudMode)insertRow(table,newItem)
+      return newItem
     }
     const update=(id:string,patch:Partial<T>)=>{
       setter(p=>p.map(i=>i.id===id?{...i,...patch}:i))
