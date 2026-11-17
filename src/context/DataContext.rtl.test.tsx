@@ -15,6 +15,7 @@ const h=vi.hoisted(()=>({
   auth:{user:null as {id:string;email?:string}|null,loading:false,recoveryMode:false},
   fetchAllTablesStrict:vi.fn(),
   insertRow:vi.fn(),
+  upsertRow:vi.fn(),
   updateRow:vi.fn(),
   deleteRow:vi.fn(),
   batchInsert:vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('../lib/supabase',()=>({
   supabase:{auth:{getUser:h.getUser},from:vi.fn()},
   fetchAllTablesStrict:h.fetchAllTablesStrict,
   insertRow:h.insertRow,
+  upsertRow:h.upsertRow,
   updateRow:h.updateRow,
   deleteRow:h.deleteRow,
   batchInsert:h.batchInsert,
@@ -85,6 +87,64 @@ beforeEach(()=>{
 
 afterEach(()=>{
   cleanup()
+})
+
+describe('logTimeBlock 幂等写入',()=>{
+  const draft=(patch:Record<string,unknown>={})=>({
+    date:'2026-01-01',
+    start:9,
+    end:10,
+    title:'计时',
+    category:'学习',
+    source:'timer',
+    ref_type:'timer',
+    ref_id:'s1',
+    duration:1,
+    ...patch,
+  })
+
+  it('同一会话重复调用只落一条，第二次返回 deduped',()=>{
+    render(tree())
+    let first:{id:string;deduped:boolean}
+    let second:{id:string;deduped:boolean}
+    act(()=>{first=ctx.logTimeBlock(draft({id:'tb_s1'}) as any)})
+    act(()=>{second=ctx.logTimeBlock(draft({id:'tb_s1'}) as any)})
+
+    expect(ctx.timeBlocks).toHaveLength(1)
+    expect(first!).toEqual({id:'tb_s1',deduped:false})
+    expect(second!).toEqual({id:'tb_s1',deduped:true})
+  })
+
+  it('跨零点两条 id/ref 各自唯一，都能落库',()=>{
+    render(tree())
+    act(()=>{ctx.logTimeBlock(draft({id:'tb_s1#1',ref_id:'s1#1',start:23,end:24,duration:1}) as any)})
+    act(()=>{ctx.logTimeBlock(draft({id:'tb_s1#2',ref_id:'s1#2',date:'2026-01-02',start:0,end:1,duration:1}) as any)})
+
+    expect(ctx.timeBlocks.map(item=>item.id).sort()).toEqual(['tb_s1#1','tb_s1#2'])
+    expect(ctx.timeBlocks.every(item=>item.ref_type==='timer')).toBe(true)
+  })
+
+  it('id 不同但 ref_type/ref_id 命中已有行时去重',()=>{
+    render(tree())
+    act(()=>{ctx.logTimeBlock(draft({id:'tb_s1'}) as any)})
+    let result:{id:string;deduped:boolean}
+    act(()=>{result=ctx.logTimeBlock(draft({id:'tb_another'}) as any)})
+
+    expect(ctx.timeBlocks).toHaveLength(1)
+    expect(result!).toEqual({id:'tb_s1',deduped:true})
+  })
+
+  it('登录态下首次 upsert 云端，重复调用不再发写请求',async()=>{
+    h.auth.user={id:'user-A',email:'a@test.local'}
+    render(tree())
+    await waitFor(()=>expect(h.fetchAllTablesStrict).toHaveBeenCalled())
+
+    act(()=>{ctx.logTimeBlock(draft({id:'tb_s1'}) as any)})
+    act(()=>{ctx.logTimeBlock(draft({id:'tb_s1'}) as any)})
+
+    expect(h.upsertRow).toHaveBeenCalledTimes(1)
+    expect(h.upsertRow.mock.calls[0][0]).toBe('time_blocks')
+  })
 })
 
 describe('DataContext React 层保护',()=>{

@@ -19,6 +19,7 @@ const PAGES:Record<ModuleId,LazyExoticComponent<ComponentType>>={
   calendar:lazy(()=>import('./features/calendar/CalendarPage')),
   timeStats:lazy(()=>import('./features/timeStats/TimeStatsPage')),
   pomodoro:lazy(()=>import('./features/pomodoro/PomodoroPage')),
+  timer:lazy(()=>import('./features/timer/TimerPage')),
   review:lazy(()=>import('./features/review/ReviewPage')),
   memos:lazy(()=>import('./features/memos/MemosPage')),
   finance:lazy(()=>import('./features/finance/FinancePage')),

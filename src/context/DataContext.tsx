@@ -20,7 +20,7 @@ type Ctx={
   goals:Goal[];addGoal:(g:Omit<Goal,'id'>)=>void;updateGoal:(id:string,p:Partial<Goal>)=>void;deleteGoal:(id:string)=>void
   habits:Habit[];addHabit:(h:Omit<Habit,'id'>)=>void;updateHabit:(id:string,p:Partial<Habit>)=>void;deleteHabit:(id:string)=>void
   days:ImportantDay[];addDay:(d:Omit<ImportantDay,'id'>)=>void;updateDay:(id:string,p:Partial<ImportantDay>)=>void;deleteDay:(id:string)=>void
-  timeBlocks:TimeBlock[];addTimeBlock:(t:Omit<TimeBlock,'id'>)=>void;updateTimeBlock:(id:string,p:Partial<TimeBlock>)=>void;deleteTimeBlock:(id:string)=>void
+  timeBlocks:TimeBlock[];addTimeBlock:(t:Omit<TimeBlock,'id'>)=>void;updateTimeBlock:(id:string,p:Partial<TimeBlock>)=>void;deleteTimeBlock:(id:string)=>void;logTimeBlock:(t:Omit<TimeBlock,'id'>&{id?:string})=>{id:string;deduped:boolean}
   pomodoros:Pomodoro[];addPomodoro:(p:Omit<Pomodoro,'id'>)=>void
   transactions:Transaction[];addTransaction:(t:Omit<Transaction,'id'>&{id?:string})=>Transaction;updateTransaction:(id:string,p:Partial<Transaction>)=>void;deleteTransaction:(id:string)=>void
   memos:Memo[];addMemo:(m:Omit<Memo,'id'>)=>void;updateMemo:(id:string,p:Partial<Memo>)=>void;deleteMemo:(id:string)=>void
@@ -418,6 +418,56 @@ export function DataProvider({children}:{children:ReactNode}){
   const rc=mk<Recurring>(setRecurrings,'recurrings')
 
   /**
+   * 时间块幂等写入口（计时器专用）：
+   * - 主键确定性：调用方传 tb_<sessionId>，跨零点为 #1/#2
+   * - 防重入三层：内存键映射（同 tick 重复调用）→ 已加载数据比对（刷新后）→ 云端 upsert + 表级部分唯一索引
+   * - 未传 id 时退化为随机 id 的普通追加，便于未来其他来源复用
+   */
+  const loggedTimeBlockKeys=useRef<Map<string,string>>(new Map())
+  const timeBlockKeys=(item:{id:string;ref_type?:string;ref_id?:string})=>{
+    const keys=[`id:${item.id}`]
+    if(item.ref_type&&item.ref_id)keys.push(`ref:${item.ref_type}|${item.ref_id}`)
+    return keys
+  }
+
+  const logTimeBlock=(input:Omit<TimeBlock,'id'>&{id?:string})=>{
+    const next={...input,id:input.id||uid()}as TimeBlock
+    const keys=timeBlockKeys(next)
+
+    for(const key of keys){
+      const hit=loggedTimeBlockKeys.current.get(key)
+      if(hit)return{id:hit,deduped:true}
+    }
+
+    const existing=timeBlocks.find(row=>
+      row.id===next.id||(
+        !!next.ref_type&&!!next.ref_id&&
+        row.ref_type===next.ref_type&&row.ref_id===next.ref_id
+      )
+    )
+    if(existing){
+      keys.forEach(key=>loggedTimeBlockKeys.current.set(key,existing.id))
+      return{id:existing.id,deduped:true}
+    }
+
+    keys.forEach(key=>loggedTimeBlockKeys.current.set(key,next.id))
+    setTimeBlocks(prev=>prev.some(row=>row.id===next.id)?prev:[...prev,next])
+    if(loggedIn&&isCloudMode)upsertRow('time_blocks',next)
+    return{id:next.id,deduped:false}
+  }
+
+  /** 删除时间块时同步清理幂等键，保证撤销后可以重新写入同一会话 */
+  const deleteTimeBlock=(id:string)=>{
+    const target=timeBlocks.find(row=>row.id===id)
+    tb.del(id)
+    if(target){
+      timeBlockKeys(target).forEach(key=>{
+        if(loggedTimeBlockKeys.current.get(key)===id)loggedTimeBlockKeys.current.delete(key)
+      })
+    }
+  }
+
+  /**
    * 记账流水的唯一写入口：
    * - 不带 id：手动记账，沿用原 insert 路径
    * - 带 id：周期账单自动生成，本地按 id 幂等去重，云端走 upsert 收敛
@@ -595,6 +645,7 @@ export function DataProvider({children}:{children:ReactNode}){
       saveBackup(BACKUP_KEYS.import,raw)
       const result=normalizeLocalData(raw)
       const d=result.data
+      loggedTimeBlockKeys.current.clear()
       setTodos(d.todos)
       setLists(d.lists)
       setCategories(d.categories)
@@ -639,6 +690,7 @@ export function DataProvider({children}:{children:ReactNode}){
 
   const resetAll=()=>{
     if(confirm('确定清空所有数据？')){
+      loggedTimeBlockKeys.current.clear()
       setTodos([]);setLists(sanitizeLists([]));setCategories(sanitizeCategories([]))
       setGoals([]);setHabits([]);setDays([]);setTimeBlocks([]);setPomodoros([])
       setTransactions([]);setMemos([]);setFinanceCategories(sanitizeFinanceCategories([]))
@@ -753,7 +805,7 @@ export function DataProvider({children}:{children:ReactNode}){
       goals,addGoal:g.add,updateGoal:g.update,deleteGoal:g.del,
       habits,addHabit:h.add,updateHabit,deleteHabit,
       days,addDay:d.add,updateDay:d.update,deleteDay:d.del,
-      timeBlocks,addTimeBlock:tb.add,updateTimeBlock:tb.update,deleteTimeBlock:tb.del,
+      timeBlocks,addTimeBlock:tb.add,updateTimeBlock:tb.update,deleteTimeBlock,logTimeBlock,
       pomodoros,addPomodoro,
       transactions,addTransaction,updateTransaction:tr.update,deleteTransaction:tr.del,
       memos,addMemo:m.add,updateMemo:m.update,deleteMemo:m.del,
