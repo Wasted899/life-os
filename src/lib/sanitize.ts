@@ -13,12 +13,38 @@
  * 2. 严禁把 `...raw` 放到默认值之后。那会让旧字段原样盖回 sanitize/migrate 的结果，
  *    历史上正是这个顺序导致规范化失效，后续不要再加回来。
  * 3. 本文件不删除旧字段、不做过深类型转换，具体映射由 migrate 负责。
- *    唯一例外：sanitizeTodos 负责 priority → quadrant 归一（云端拉取不经过 migrate，见该函数注释）。
+ *    例外：sanitizeTodos 负责 priority → quadrant 归一，sanitizeMemos 负责 kind → items 归一
+ *    （云端拉取不经过 migrate，见各函数注释）。
  */
 import dayjs from 'dayjs'
+import type { MemoItem } from '../core/types'
 const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36)
 const arr=(v:any):any[]=>Array.isArray(v)?v:[]
 const asQuadrant=(v:any):'q1'|'q2'|'q3'|'q4'=>(v==='q1'||v==='q2'||v==='q3'||v==='q4')?v:'q2'
+/** 清单数量：整数且落在 1..9999，其余（含 null/NaN/0/负数/非数字）回落 1 */
+const asMemoQty=(v:any):number=>{
+  const n=typeof v==='number'?v:typeof v==='string'?parseFloat(v):NaN
+  if(!Number.isFinite(n))return 1
+  const i=Math.floor(n)
+  return i<1?1:i>9999?9999:i
+}
+/**
+ * 购物清单条目兜底：非数组 → []；非对象条目丢弃；缺 id 补 uid（重复则重新生成）；
+ * 缺 text 补空串；done 严格 true 才算已购；qty 非法回落 1。
+ * 云端拉取不经过 migrate，所以必须在这里就把 items 变成可安全渲染的形状。
+ */
+export const sanitizeMemoItems=(raw:any):MemoItem[]=>{
+  const out:MemoItem[]=[]
+  const seen=new Set<string>()
+  for(const it of arr(raw)){
+    if(!it||typeof it!=='object')continue
+    let id=typeof it.id==='string'&&it.id?it.id:uid()
+    while(seen.has(id))id=uid()
+    seen.add(id)
+    out.push({...it,id,text:typeof it.text==='string'?it.text:'',done:it.done===true,qty:asMemoQty(it.qty)})
+  }
+  return out
+}
 /**
  * priority → quadrant 的唯一归一入口。
  * 放在 sanitize 而不是 migrate：sanitizeAll 是所有数据进入 state 的必经之路
@@ -53,7 +79,11 @@ export const sanitizeTransactions=(raw:any)=>arr(raw).map((t:any)=>{
 })
 export const sanitizeTimeBlocks=(raw:any)=>arr(raw).map((t:any)=>({...t,id:t.id||uid(),date:t.date||dayjs().format('YYYY-MM-DD'),start:typeof t.start==='number'?t.start:parseFloat(t.start)||9,end:typeof t.end==='number'?t.end:parseFloat(t.end)||10,title:t.title||t.name||'未命名',category:t.category||'其他',source:t.source||''}))
 export const sanitizeGoals=(raw:any)=>arr(raw).map((g:any)=>({...g,id:g.id||uid(),title:g.title||g.name||'未命名目标',type:g.type||g.period||'yearly',parent_id:g.parent_id||g.parentId||null,progress:typeof g.progress==='number'?g.progress:0,status:g.status||'active',description:g.description||g.desc||''}))
-export const sanitizeMemos=(raw:any)=>arr(raw).map((m:any)=>({...m,id:m.id||uid(),title:m.title||'',content:m.content||m.text||'',category:m.category||'其他',pinned:!!m.pinned,completed:!!m.completed,created_at:m.created_at||dayjs().toISOString()}))
+export const sanitizeMemos=(raw:any)=>arr(raw).map((m:any)=>{
+  const items=sanitizeMemoItems(m.items)
+  const kind=m.kind==='note'||m.kind==='checklist'?m.kind:(items.length?'checklist':'note')
+  return{...m,id:m.id||uid(),title:m.title||'',content:m.content||m.text||'',category:m.category||'其他',pinned:!!m.pinned,completed:!!m.completed,created_at:m.created_at||dayjs().toISOString(),kind,items}
+})
 export const sanitizePomodoros=(raw:any)=>arr(raw).map((p:any)=>({...p,id:p.id||uid(),date:p.date||dayjs().format('YYYY-MM-DD'),duration:typeof p.duration==='number'?p.duration:25,task:p.task||'',completed:p.completed!==false,mode:p.mode||'countdown'}))
 export const sanitizeCategories=(raw:any)=>{
   const def=[{id:'c1',name:'学习',color:'#3b82f6'},{id:'c2',name:'工作',color:'#8b5cf6'},{id:'c3',name:'生活',color:'#22c55e'},{id:'c4',name:'娱乐',color:'#f59e0b'},{id:'c5',name:'其他',color:'#94a3b8'}]

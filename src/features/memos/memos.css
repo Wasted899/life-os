@@ -1,0 +1,312 @@
+/* 备忘录页专用样式：全部限定在 .memos-page 下（弹窗内容也包了一层 .memos-page） */
+.memos-page .memos-toolbar {
+  margin-bottom: 16px;
+}
+
+.memos-page .memos-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.memos-page .memos-search {
+  flex: 1;
+  min-width: 200px;
+}
+
+.memos-page .memos-new {
+  position: relative;
+  flex: none;
+}
+
+.memos-page .memos-new-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 156px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+
+.memos-page .memos-new-item {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.memos-page .memos-new-item:hover {
+  background: #f1f5f9;
+}
+
+.memos-page .memos-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.memos-page .memos-chip {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 13px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.memos-page .memos-chip:hover {
+  transform: translateY(-1px);
+}
+
+.memos-page .memos-chip-active {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.38);
+  font-weight: 700;
+}
+
+.memos-page .memos-manage {
+  margin-left: auto;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+/* 多列瀑布流：1100px→2 列，700px→1 列 */
+.memos-page .memos-grid {
+  columns: 3;
+  column-gap: 16px;
+}
+
+.memos-page .memo-card {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 16px;
+  padding: 16px;
+  vertical-align: top;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.memos-page .memo-card.memo-pinned {
+  border-left: 3px solid #f59e0b;
+}
+
+.memos-page .memo-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.memos-page .memo-actions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.memos-page .memo-icon {
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.memos-page .memo-danger {
+  color: #ef4444;
+}
+
+.memos-page .memo-content {
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.memos-page .memo-note {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.memos-page .memo-progress {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.memos-page .memo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memos-page .memo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memos-page .memo-item input[type='checkbox'] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.memos-page .memo-item-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.memos-page .memo-item.done .memo-item-text {
+  color: #94a3b8;
+  text-decoration: line-through;
+}
+
+.memos-page .memo-item-qty {
+  flex: none;
+  width: 60px;
+  padding: 3px 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.memos-page .memo-items-empty {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.memos-page .memo-clear {
+  margin-top: 10px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.memos-page .memo-time {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.memos-page .memos-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memos-page .memos-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.memos-page .memos-items-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memos-page .memos-item-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memos-page .memos-qty {
+  flex: none;
+  width: 70px;
+  padding: 8px 6px;
+  text-align: center;
+}
+
+.memos-page .memos-add-item {
+  align-self: flex-start;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.memos-page .memos-error {
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.memos-page .memos-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.memos-page .memos-cat-row:last-child {
+  border-bottom: none;
+}
+
+.memos-page .memos-cat-count {
+  flex: 1;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.memos-page .memos-cat-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.memos-page .memos-cat-btn {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.memos-page .memos-cat-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.memos-page .memos-cat-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.memos-page .memos-cat-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.memos-page .memos-cat-add .input {
+  flex: 1;
+}
+
+@media (max-width: 1100px) {
+  .memos-page .memos-grid {
+    columns: 2;
+  }
+}
+
+@media (max-width: 700px) {
+  .memos-page .memos-grid {
+    columns: 1;
+  }
+}

@@ -221,6 +221,8 @@ create table if not exists memos (
   category text default '其他',
   pinned boolean default false,
   completed boolean default false,
+  kind text default 'note',
+  items jsonb default '[]'::jsonb,
   created_at text default '',
   inserted_at timestamptz default now()
 );
@@ -296,6 +298,9 @@ alter table pomodoros add column if not exists tag text;
 
 alter table transactions add column if not exists account_id text;
 alter table transactions add column if not exists recurring_id text;
+
+alter table memos add column if not exists kind text default 'note';
+alter table memos add column if not exists items jsonb default '[]'::jsonb;
 
 alter table accounts add column if not exists opening_balance numeric;
 

@@ -234,6 +234,18 @@ export interface Recurring {
   paused?: boolean
 }
 
+/** 13. 备忘录：普通笔记 / 购物清单 */
+export type MemoKind = 'note' | 'checklist'
+
+/** 购物清单条目（存于 memos.items jsonb） */
+export interface MemoItem {
+  id: ID
+  text: string
+  done: boolean
+  /** 数量：正整数，默认 1 */
+  qty?: number
+}
+
 /** 13. 备忘录 */
 export interface Memo {
   id: ID
@@ -243,6 +255,8 @@ export interface Memo {
   pinned: boolean
   completed: boolean
   created_at: ISODateTime
+  kind: MemoKind
+  items: MemoItem[]
 }
 
 /** 14. 复盘（四周期共用一张表，字段模板见 sections） */

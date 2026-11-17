@@ -21,7 +21,7 @@
 
 import dayjs from 'dayjs'
 import { uid } from './storage'
-import { sanitizeAll } from '../lib/sanitize'
+import { sanitizeAll, sanitizeMemoItems } from '../lib/sanitize'
 import {
   isGoalLevel,
   legacyTypeOfLevel,
@@ -248,6 +248,8 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: 'completed', to: 'completed', kind: 'coerce' },
     { from: 'created_at', to: 'created_at', kind: 'coerce', note: '非法值需转 ISO 字符串' },
     { from: '*', to: 'created_at', kind: 'default', note: '缺失时由运行时写入当前 ISO 时间' },
+    { from: '*', to: 'kind', kind: 'default', defaultValue: 'note', note: 'M2-1：kind 缺失/非法时按 items 是否非空推断' },
+    { from: '*', to: 'items', kind: 'default', defaultValue: [], note: 'M2-1：jsonb 条目数组；null/非数组/脏条目由 sanitizeMemoItems 兜底' },
   ],
   financeCategories: [
     { from: 'id', to: 'id', kind: 'keep', note: '样本实测 fc1..fc6 / fi1..fi4' },
@@ -305,7 +307,7 @@ export const KNOWN_KEYS: Record<DomainKey, readonly string[]> = {
   timeBlocks: ['id', 'date', 'start', 'end', 'title', 'name', 'category', 'source', 'duration', 'ref_type', 'ref_id'],
   pomodoros: ['id', 'date', 'duration', 'task', 'completed', 'mode', 'task_id', 'task_label', 'tag'],
   transactions: ['id', 'date', 'type', 'category', 'amount', 'account', 'note', 'remark', 'account_id', 'recurring_id'],
-  memos: ['id', 'title', 'content', 'text', 'category', 'pinned', 'completed', 'created_at'],
+  memos: ['id', 'title', 'content', 'text', 'category', 'pinned', 'completed', 'created_at', 'kind', 'items'],
   financeCategories: ['id', 'name', 'type', 'color', 'icon'],
   accounts: ['id', 'name', 'balance', 'opening_balance', 'icon'],
   recurrings: ['id', 'name', 'amount', 'cycle', 'day', 'category', 'account', 'start_date', 'startDate', 'next_date', 'custom_period', 'type', 'account_id', 'paused'],
@@ -791,6 +793,9 @@ function normalizeMemo(item: Record<string, unknown>): Memo {
   out.pinned = asBool(item.pinned, false)
   out.completed = asBool(item.completed, false)
   out.created_at = asOptionalText(item.created_at) || new Date().toISOString()
+  const items = sanitizeMemoItems(item.items)
+  out.items = items
+  out.kind = item.kind === 'note' || item.kind === 'checklist' ? item.kind : items.length ? 'checklist' : 'note'
   delete out.text
   return out as unknown as Memo
 }
