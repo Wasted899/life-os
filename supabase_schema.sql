@@ -207,6 +207,7 @@ create table if not exists transactions (
   account text default '微信',
   note text,
   account_id text,
+  recurring_id text,
   created_at timestamptz default now()
 );
 
@@ -258,6 +259,7 @@ create table if not exists recurrings (
   start_date text default '',
   next_date text,
   custom_period text,
+  paused boolean default false,
   created_at timestamptz default now()
 );
 
@@ -293,6 +295,7 @@ alter table pomodoros add column if not exists task_label text;
 alter table pomodoros add column if not exists tag text;
 
 alter table transactions add column if not exists account_id text;
+alter table transactions add column if not exists recurring_id text;
 
 alter table accounts add column if not exists opening_balance numeric;
 
@@ -300,6 +303,7 @@ alter table recurrings add column if not exists next_date text;
 alter table recurrings add column if not exists custom_period text;
 alter table recurrings add column if not exists type text default 'expense';
 alter table recurrings add column if not exists account_id text;
+alter table recurrings add column if not exists paused boolean default false;
 
 
 -- ============================================================

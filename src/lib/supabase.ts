@@ -161,6 +161,17 @@ export async function insertRow(table:string,row:any):Promise<void>{
   })
 }
 
+// 按主键 upsert 单行：同 id 重复写入收敛为一行（周期账单自动生成需要确定性 id）
+export async function upsertRow(table:string,row:any):Promise<void>{
+  if(!supabase)return
+  const userId=await getUserId()
+  const rowWithUser=userId?{...row,user_id:userId}:row
+  await writeWithColumnFallback(table,[rowWithUser],async payload=>{
+    const{error}=await supabase!.from(table).upsert(payload,{onConflict:'id'})
+    return{error}
+  })
+}
+
 // 批量插入（用于上传本地数据，自动给每条加上user_id）
 export async function batchInsert(table:string,rows:any[]):Promise<void>{
   if(!supabase||rows.length===0)return

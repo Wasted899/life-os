@@ -185,6 +185,8 @@ export interface Transaction {
   note?: string
   // ---- 批次 0 预留 ----
   account_id?: ID
+  /** M2：由周期账单自动生成时写入来源规则 id，用于列表「周期」徽标与幂等排查 */
+  recurring_id?: ID
 }
 
 /** 10. 记账分类 */
@@ -228,6 +230,8 @@ export interface Recurring {
   type?: TransactionType
   /** M2：关联账户 id；旧数据可为空，由 account 名称解析 */
   account_id?: ID
+  /** M2：暂停后不再自动生成，恢复时不补记暂停期间 */
+  paused?: boolean
 }
 
 /** 13. 备忘录 */

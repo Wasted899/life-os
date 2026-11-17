@@ -46,7 +46,11 @@ export const sanitizeHabits=(raw:any)=>arr(raw).map((h:any)=>{
 // 注意：不要在这里改写 type/category。旧数据可能把分类名存在 type 里，
 // 需要在 migrate 中判断 type ∉ {countdown,countup} 后再决定它是分类还是类型。
 export const sanitizeDays=(raw:any)=>arr(raw).map((d:any)=>({...d,id:d.id||uid(),title:d.title||d.name||'未命名事件',date:d.date||dayjs().format('YYYY-MM-DD'),pinned:!!d.pinned}))
-export const sanitizeTransactions=(raw:any)=>arr(raw).map((t:any)=>({...t,id:t.id||uid(),date:t.date||dayjs().format('YYYY-MM-DD'),type:t.type==='income'?'income':'expense',category:t.category||'其他',amount:typeof t.amount==='number'?t.amount:parseFloat(t.amount)||0,account:t.account||'微信',note:t.note||t.remark||''}))
+export const sanitizeTransactions=(raw:any)=>arr(raw).map((t:any)=>{
+  const tx={...t,id:t.id||uid(),date:t.date||dayjs().format('YYYY-MM-DD'),type:t.type==='income'?'income':'expense',category:t.category||'其他',amount:typeof t.amount==='number'?t.amount:parseFloat(t.amount)||0,account:t.account||'微信',note:t.note||t.remark||''}
+  if(typeof tx.recurring_id!=='string'||!tx.recurring_id)delete tx.recurring_id
+  return tx
+})
 export const sanitizeTimeBlocks=(raw:any)=>arr(raw).map((t:any)=>({...t,id:t.id||uid(),date:t.date||dayjs().format('YYYY-MM-DD'),start:typeof t.start==='number'?t.start:parseFloat(t.start)||9,end:typeof t.end==='number'?t.end:parseFloat(t.end)||10,title:t.title||t.name||'未命名',category:t.category||'其他',source:t.source||''}))
 export const sanitizeGoals=(raw:any)=>arr(raw).map((g:any)=>({...g,id:g.id||uid(),title:g.title||g.name||'未命名目标',type:g.type||g.period||'yearly',parent_id:g.parent_id||g.parentId||null,progress:typeof g.progress==='number'?g.progress:0,status:g.status||'active',description:g.description||g.desc||''}))
 export const sanitizeMemos=(raw:any)=>arr(raw).map((m:any)=>({...m,id:m.id||uid(),title:m.title||'',content:m.content||m.text||'',category:m.category||'其他',pinned:!!m.pinned,completed:!!m.completed,created_at:m.created_at||dayjs().toISOString()}))
@@ -67,7 +71,10 @@ export const sanitizeFinanceCategories=(raw:any)=>{
   return list.length?list.map((c:any)=>({...c,id:c.id||uid(),name:c.name||'未分类',type:c.type||'expense',color:c.color||'#94a3b8',icon:c.icon||'📦'})):def
 }
 export const sanitizeAccounts=(raw:any)=>arr(raw).map((a:any)=>({...a,id:a.id||uid(),name:a.name||'账户',balance:typeof a.balance==='number'?a.balance:0,...(typeof a.opening_balance==='number'&&Number.isFinite(a.opening_balance)?{opening_balance:a.opening_balance}:{}),icon:a.icon||'💳'}))
-export const sanitizeRecurrings=(raw:any)=>arr(raw).map((r:any)=>({...r,id:r.id||uid(),name:r.name||'周期账单',amount:typeof r.amount==='number'?r.amount:0,cycle:r.cycle==='yearly'?'yearly':'monthly',day:typeof r.day==='number'?r.day:1,category:r.category||'其他',account:r.account||'微信',type:r.type==='income'?'income':'expense',...(r.account_id?{account_id:r.account_id}:{}),start_date:r.start_date||r.startDate||dayjs().format('YYYY-MM-DD')}))
+export const sanitizeRecurrings=(raw:any)=>arr(raw).map((r:any)=>{
+  const startDate=r.start_date||r.startDate||dayjs().format('YYYY-MM-DD')
+  return{...r,id:r.id||uid(),name:r.name||'周期账单',amount:typeof r.amount==='number'?r.amount:0,cycle:r.cycle==='yearly'?'yearly':'monthly',day:typeof r.day==='number'?r.day:1,category:r.category||'其他',account:r.account||'微信',type:r.type==='income'?'income':'expense',paused:r.paused===true,...(r.account_id?{account_id:r.account_id}:{}),custom_period:r.custom_period||'day',start_date:startDate,next_date:r.next_date||startDate}
+})
 export const sanitizeAll=(data:any)=>{
   if(!data||typeof data!=='object')return{}
   return{todos:sanitizeTodos(data.todos),lists:sanitizeLists(data.lists),categories:sanitizeCategories(data.categories),goals:sanitizeGoals(data.goals),habits:sanitizeHabits(data.habits),days:sanitizeDays(data.days),timeBlocks:sanitizeTimeBlocks(data.timeBlocks),pomodoros:sanitizePomodoros(data.pomodoros),transactions:sanitizeTransactions(data.transactions),memos:sanitizeMemos(data.memos),financeCategories:sanitizeFinanceCategories(data.financeCategories),accounts:sanitizeAccounts(data.accounts),recurrings:sanitizeRecurrings(data.recurrings)}

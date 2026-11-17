@@ -4,6 +4,7 @@ import {HashRouter,Routes,Route,useNavigate} from 'react-router-dom'
 import Layout from './app/Layout'
 import ErrorBoundary from './app/ErrorBoundary'
 import CloudSyncGate from './app/CloudSyncGate'
+import RecurringAutoPost from './features/finance/RecurringAutoPost'
 import {useAuth} from './context/AuthContext'
 import {ROUTE_DEFS} from './core/nav'
 import type {ModuleId} from './core/types'
@@ -56,6 +57,8 @@ function AppGuard({children}:{children:ReactNode}){
 export default function App(){
   return(
     <HashRouter>
+      {/* 周期账单自动生成：位于 DataProvider 之内、Routes 之外 */}
+      <RecurringAutoPost/>
       {/* 云同步弹窗挂在根层：/login 与主应用都能看到 */}
       <CloudSyncGate/>
       <RecoveryRedirect/>

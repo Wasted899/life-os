@@ -235,6 +235,7 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: '*', to: 'account', kind: 'default', defaultValue: '微信' },
     { from: 'remark', to: 'note', kind: 'merge', note: 'note 缺失时兜底' },
     { from: 'account', to: 'account_id', kind: 'derive', note: '兼容解析：先按 id 匹配，再按账户名精确匹配；匹配不到则 account 保留原文、account_id 留空（见 resolveAccount）' },
+    { from: 'recurring_id', to: 'recurring_id', kind: 'keep', note: 'M2：周期账单自动生成流水的来源标记，手动流水无此字段' },
   ],
   memos: [
     { from: 'id', to: 'id', kind: 'keep' },
@@ -281,11 +282,12 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: 'account', to: 'account', kind: 'keep' },
     { from: '*', to: 'account', kind: 'default', defaultValue: '微信' },
     { from: 'startDate', to: 'start_date', kind: 'merge', note: 'start_date 缺失时兜底' },
-    { from: 'start_date + cycle + day', to: 'next_date', kind: 'derive', note: '待确认在 migrate 还是运行时计算' },
-    { from: '*', to: 'custom_period', kind: 'default', note: '旧结构只支持 monthly/yearly' },
+    { from: 'start_date + cycle + day', to: 'next_date', kind: 'derive', note: 'M2：缺失时回落到 start_date，由运行时按应付日规则自愈' },
+    { from: '*', to: 'custom_period', kind: 'default', note: '旧结构只支持 monthly/yearly；nth:<n>:<weekday> 表示第 n 个周几' },
     { from: 'type', to: 'type', kind: 'coerce', note: 'M2：仅 income/expense，其余→expense' },
     { from: '*', to: 'type', kind: 'default', defaultValue: 'expense' },
     { from: 'account', to: 'account_id', kind: 'derive', note: 'M2：与流水一致，先按 id 再按名称精确匹配；匹配不到时 account_id 留空' },
+    { from: '*', to: 'paused', kind: 'coerce', note: 'M2：仅 true 视为暂停，其余→false' },
   ],
 }
 
@@ -302,11 +304,11 @@ export const KNOWN_KEYS: Record<DomainKey, readonly string[]> = {
   days: ['id', 'title', 'name', 'date', 'category', 'pinned', 'type'],
   timeBlocks: ['id', 'date', 'start', 'end', 'title', 'name', 'category', 'source', 'duration', 'ref_type', 'ref_id'],
   pomodoros: ['id', 'date', 'duration', 'task', 'completed', 'mode', 'task_id', 'task_label', 'tag'],
-  transactions: ['id', 'date', 'type', 'category', 'amount', 'account', 'note', 'remark', 'account_id'],
+  transactions: ['id', 'date', 'type', 'category', 'amount', 'account', 'note', 'remark', 'account_id', 'recurring_id'],
   memos: ['id', 'title', 'content', 'text', 'category', 'pinned', 'completed', 'created_at'],
   financeCategories: ['id', 'name', 'type', 'color', 'icon'],
   accounts: ['id', 'name', 'balance', 'opening_balance', 'icon'],
-  recurrings: ['id', 'name', 'amount', 'cycle', 'day', 'category', 'account', 'start_date', 'startDate', 'next_date', 'custom_period', 'type', 'account_id'],
+  recurrings: ['id', 'name', 'amount', 'cycle', 'day', 'category', 'account', 'start_date', 'startDate', 'next_date', 'custom_period', 'type', 'account_id', 'paused'],
 }
 
 export type MigrationIssueCode =
@@ -773,6 +775,9 @@ function normalizeTransaction(
   const resolved = resolveAccount(item.account, item.account_id, ctx.accounts)
   out.account = resolved.account || (resolved.account_id ? '' : '微信')
   out.account_id = resolved.account_id
+  const recurringId = asOptionalText(item.recurring_id)
+  if (recurringId) out.recurring_id = recurringId
+  else delete out.recurring_id
   delete out.remark
   return out as unknown as Transaction
 }
@@ -832,8 +837,10 @@ function normalizeRecurring(item: Record<string, unknown>, ctx: NormalizeContext
   out.account = resolved.account || (resolved.account_id ? '' : '微信')
   out.account_id = resolved.account_id
   out.start_date = asDate(pick(item.start_date, item.startDate)) || ctx.today
-  out.next_date = asDate(item.next_date)
-  out.custom_period = asOptionalText(item.custom_period)
+  // next_date 是自动生成游标：缺失时回落到 start_date，由运行时按应付日规则自愈
+  out.next_date = asDate(item.next_date) || out.start_date
+  out.custom_period = asOptionalText(item.custom_period) || 'day'
+  out.paused = asBool(item.paused, false)
   delete out.startDate
   return out as unknown as Recurring
 }

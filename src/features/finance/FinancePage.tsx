@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useData } from '../../context/DataContext'
 import Modal from '../../core/ui/Modal'
 import { load, save } from '../../core/storage'
@@ -6,6 +6,8 @@ import dayjs from 'dayjs'
 import type { AccountDraft } from './AccountsPanel'
 import AccountsPanel from './AccountsPanel'
 import CategoriesPanel from './CategoriesPanel'
+import RecurringPanel from './RecurringPanel'
+import { RECURRING_CHECK_EVENT } from './RecurringAutoPost'
 import { buildLedger, currentBalance } from './model/accounts'
 import { filterTransactions, summarizeTransactions } from './model/selectors'
 import { formatCNY, round2 } from './model/money'
@@ -37,7 +39,11 @@ export default function Finance() {
   const [newAccount, setNewAccount] = useState({ name: '', icon: '💳', opening: '' })
   const [prefs, setPrefs] = useState<FinanceUiPrefs>(() => load<FinanceUiPrefs>('p_finance_ui', {}))
   const [month, setMonth] = useState(dayjs().format('YYYY-MM'))
-  const [newRec, setNewRec] = useState({ name: '', amount: 0, cycle: 'monthly' as 'monthly' | 'yearly', day: 1, category: '其他', account: '微信' })
+
+  // 进入记账页立即检查一次周期账单（与挂载/回到前台共用同一计划器）
+  useEffect(() => {
+    window.dispatchEvent(new Event(RECURRING_CHECK_EVENT))
+  }, [])
 
   /** 账户余额唯一来源：按全历史流水派生，任何增删改都自动重算 */
   const ledger = useMemo(() => buildLedger(transactions), [transactions])
@@ -165,12 +171,6 @@ export default function Finance() {
     setShow(false)
   }
 
-  const addRec = () => {
-    if (!newRec.name.trim()) return
-    addRecurring({ ...newRec, start_date: dayjs().format('YYYY-MM-DD') })
-    setNewRec({ name: '', amount: 0, cycle: 'monthly', day: 1, category: '其他', account: '微信' })
-  }
-
   const handleAddAccount = (draft: AccountDraft) => {
     addAccount({
       name: draft.name,
@@ -269,7 +269,11 @@ export default function Finance() {
                 <div key={t.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => openEdit(t)}>
                   <div style={{ width: 36, height: 36, borderRadius: '50%', background: t.type === 'expense' ? '#fee2e2' : '#dcfce7', display: 'flex', justifyContent: 'center', fontSize: 16 }}>{t.type === 'expense' ? '💸' : '💰'}</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500 }}>{categoryLabel(t.category, financeCategories)}{t.note && <span style={{ color: '#94a3b8', fontSize: 12, marginLeft: 6 }}>{t.note}</span>}</div>
+                    <div style={{ fontWeight: 500 }}>
+                      {categoryLabel(t.category, financeCategories)}
+                      {t.recurring_id && <span className="fin-recurring-tag">周期</span>}
+                      {t.note && <span style={{ color: '#94a3b8', fontSize: 12, marginLeft: 6 }}>{t.note}</span>}
+                    </div>
                     <div style={{ fontSize: 12, color: '#94a3b8' }}>
                       {t.date} · {unassigned ? <span className="fin-unassigned">未归属</span> : accountNameOf(t)}
                     </div>
@@ -335,24 +339,14 @@ export default function Finance() {
         )}
 
         {tab === 'recurring' && (
-          <div>
-            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>定期自动扣款/收入提醒</div>
-            {recurrings.map((r: any) => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: '#f8fafc', borderRadius: 8, marginBottom: 8 }}>
-                <div><div style={{ fontWeight: 600 }}>{r.name}</div><div style={{ fontSize: 12, color: '#94a3b8' }}>{r.cycle === 'monthly' ? '每月' : '每年'}{r.day}日 · {r.category} · {r.account}</div></div>
-                <div style={{ fontWeight: 700, color: '#ef4444' }}>{formatCNY(r.amount)}</div>
-                <button className="btn btn-ghost" style={{ padding: '2px 6px', color: '#ef4444' }} onClick={() => deleteRecurring(r.id)}>×</button>
-              </div>
-            ))}
-            {recurrings.length === 0 && <div className="empty">暂无周期账单</div>}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 8, marginTop: 12 }}>
-              <input className="input" placeholder="名称（如校园网）" value={newRec.name} onChange={e => setNewRec({ ...newRec, name: e.target.value })} />
-              <input className="input" type="number" placeholder="金额" value={newRec.amount || ''} onChange={e => setNewRec({ ...newRec, amount: +e.target.value })} />
-              <select className="select" value={newRec.cycle} onChange={e => setNewRec({ ...newRec, cycle: e.target.value as any })}><option value="monthly">每月</option><option value="yearly">每年</option></select>
-              <input className="input" type="number" min="1" max="31" placeholder="日" value={newRec.day} onChange={e => setNewRec({ ...newRec, day: +e.target.value })} />
-              <button className="btn btn-primary" onClick={addRec}>添加</button>
-            </div>
-          </div>
+          <RecurringPanel
+            recurrings={recurrings}
+            accounts={accounts}
+            categories={financeCategories}
+            onCreate={addRecurring}
+            onUpdate={updateRecurring}
+            onDelete={deleteRecurring}
+          />
         )}
 
         {tab === 'yearly' && (

@@ -3,7 +3,7 @@ import {load,save,uid,readRaw,readLegacy,readLegacyText,writeLegacy,writeLegacyT
 import {normalizeLocalData,migrateExtras,buildExportPayload,splitLegacyReviews} from '../core/migrate'
 import {sanitizeTodos,sanitizeHabits,sanitizeDays,sanitizeTransactions,sanitizeTimeBlocks,sanitizeGoals,sanitizeMemos,sanitizePomodoros,sanitizeCategories,sanitizeLists,sanitizeFinanceCategories,sanitizeAccounts,sanitizeRecurrings,sanitizeAll} from '../lib/sanitize'
 import type{Todo,TodoList,Category,Goal,Habit,ImportantDay,TimeBlock,Pomodoro,Transaction,Memo,FinanceCategory,Account,Recurring,Theme,Quote,GuideEntry,DomainData,DomainKey} from '../core/types'
-import {supabase,isCloudMode,insertRow,updateRow,deleteRow,batchInsert,clearTable,TABLE_MAP,fetchAllTablesStrict,getDroppedColumns} from '../lib/supabase'
+import {supabase,isCloudMode,insertRow,upsertRow,updateRow,deleteRow,batchInsert,clearTable,TABLE_MAP,fetchAllTablesStrict,getDroppedColumns} from '../lib/supabase'
 import {CLOUD_DOMAINS,CLOUD_TABLES,inspectLocal,mergeCloudIntoLocal,buildCloudSignature,decideCloudAction,IDLE_CLOUD_STATE} from '../core/cloudSync'
 import type{CloudUiState,CloudPayload} from '../core/cloudSync'
 import {useAuth} from './AuthContext'
@@ -22,7 +22,7 @@ type Ctx={
   days:ImportantDay[];addDay:(d:Omit<ImportantDay,'id'>)=>void;updateDay:(id:string,p:Partial<ImportantDay>)=>void;deleteDay:(id:string)=>void
   timeBlocks:TimeBlock[];addTimeBlock:(t:Omit<TimeBlock,'id'>)=>void;updateTimeBlock:(id:string,p:Partial<TimeBlock>)=>void;deleteTimeBlock:(id:string)=>void
   pomodoros:Pomodoro[];addPomodoro:(p:Omit<Pomodoro,'id'>)=>void
-  transactions:Transaction[];addTransaction:(t:Omit<Transaction,'id'>)=>void;updateTransaction:(id:string,p:Partial<Transaction>)=>void;deleteTransaction:(id:string)=>void
+  transactions:Transaction[];addTransaction:(t:Omit<Transaction,'id'>&{id?:string})=>Transaction;updateTransaction:(id:string,p:Partial<Transaction>)=>void;deleteTransaction:(id:string)=>void
   memos:Memo[];addMemo:(m:Omit<Memo,'id'>)=>void;updateMemo:(id:string,p:Partial<Memo>)=>void;deleteMemo:(id:string)=>void
   financeCategories:FinanceCategory[];addFinanceCategory:(c:Omit<FinanceCategory,'id'>)=>void;updateFinanceCategory:(id:string,p:Partial<FinanceCategory>)=>void;deleteFinanceCategory:(id:string)=>void
   accounts:Account[];addAccount:(a:Omit<Account,'id'>)=>Account;updateAccount:(id:string,p:Partial<Account>)=>void;deleteAccount:(id:string)=>void
@@ -417,6 +417,21 @@ export function DataProvider({children}:{children:ReactNode}){
   const ac=mk<Account>(setAccounts,'accounts')
   const rc=mk<Recurring>(setRecurrings,'recurrings')
 
+  /**
+   * 记账流水的唯一写入口：
+   * - 不带 id：手动记账，沿用原 insert 路径
+   * - 带 id：周期账单自动生成，本地按 id 幂等去重，云端走 upsert 收敛
+   */
+  const addTransaction=(input:Omit<Transaction,'id'>&{id?:string})=>{
+    const newItem={...input,id:input.id||uid()}as Transaction
+    setTransactions(prev=>prev.some(item=>item.id===newItem.id)?prev:[...prev,newItem])
+    if(loggedIn&&isCloudMode){
+      if(input.id)upsertRow('transactions',newItem)
+      else insertRow('transactions',newItem)
+    }
+    return newItem
+  }
+
   const addPomodoro=(p:Omit<Pomodoro,'id'>)=>{
     const newItem={...p,id:uid()}
     setPomodoros(prev=>[...prev,newItem])
@@ -740,7 +755,7 @@ export function DataProvider({children}:{children:ReactNode}){
       days,addDay:d.add,updateDay:d.update,deleteDay:d.del,
       timeBlocks,addTimeBlock:tb.add,updateTimeBlock:tb.update,deleteTimeBlock:tb.del,
       pomodoros,addPomodoro,
-      transactions,addTransaction:tr.add,updateTransaction:tr.update,deleteTransaction:tr.del,
+      transactions,addTransaction,updateTransaction:tr.update,deleteTransaction:tr.del,
       memos,addMemo:m.add,updateMemo:m.update,deleteMemo:m.del,
       financeCategories,addFinanceCategory:fc.add,updateFinanceCategory:fc.update,deleteFinanceCategory:fc.del,
       accounts,addAccount:ac.add,updateAccount:ac.update,deleteAccount:ac.del,
