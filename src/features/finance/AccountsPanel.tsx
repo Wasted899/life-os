@@ -25,6 +25,14 @@ interface AccountsPanelProps {
 
 const emptyForm = { name: '', icon: '💳', opening: '' }
 
+/** 快捷预设只填充表单，不直接创建账户 */
+const PRESETS = [
+  { name: '微信', icon: '💚' },
+  { name: '支付宝', icon: '🐜' },
+  { name: '现金', icon: '💵' },
+  { name: '银行卡', icon: '💳' },
+]
+
 /**
  * 账户卡片：余额一律走派生（期初 + 全历史流水净额），不读 balance 字段。
  * 新建 / 编辑 / 删除 / 迁移的判定全部来自 model/accountRules，组件只做交互。
@@ -179,6 +187,20 @@ export default function AccountsPanel(props: AccountsPanelProps) {
       >
         <div className="finance-page">
           <div className="fin-form">
+            {creating && (
+              <div className="fin-preset-row">
+                {PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    className="fin-preset"
+                    onClick={() => setForm({ ...form, name: preset.name, icon: preset.icon })}
+                  >
+                    {preset.icon} {preset.name}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="fin-field">
               <label className="fin-label">账户名称</label>
               <input
@@ -205,7 +227,7 @@ export default function AccountsPanel(props: AccountsPanelProps) {
                   className="input"
                   type="number"
                   step="0.01"
-                  placeholder="允许负数"
+                  placeholder="0"
                   value={form.opening}
                   onChange={(event) => {
                     setForm({ ...form, opening: event.target.value })

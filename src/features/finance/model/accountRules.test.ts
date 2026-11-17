@@ -5,6 +5,7 @@ import {
   planAccountMigration,
   referencesAccount,
   resolveDefaultAccountId,
+  resolveSelectedAccountId,
   validateAccountInput,
 } from './accountRules'
 
@@ -122,6 +123,19 @@ describe('referencesAccount / accountUsage', () => {
       canDelete: false,
       blockedByLast: true,
     })
+  })
+})
+
+describe('resolveSelectedAccountId 选中态还原', () => {
+  it('存储的账户仍存在则恢复', () => {
+    expect(resolveSelectedAccountId(accounts, 'a2')).toBe('a2')
+  })
+
+  it('未选 / 已删除 / 非法值回落「全部账户」', () => {
+    expect(resolveSelectedAccountId(accounts, undefined)).toBe('all')
+    expect(resolveSelectedAccountId(accounts, 'all')).toBe('all')
+    expect(resolveSelectedAccountId(accounts, 'gone')).toBe('all')
+    expect(resolveSelectedAccountId([], 'a1')).toBe('all')
   })
 })
 

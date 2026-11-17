@@ -5,74 +5,104 @@ import { load, save } from '../../core/storage'
 import dayjs from 'dayjs'
 import type { AccountDraft } from './AccountsPanel'
 import AccountsPanel from './AccountsPanel'
-import { buildLedger } from './model/accounts'
-import { monthSummary } from './model/selectors'
+import CategoriesPanel from './CategoriesPanel'
+import { buildLedger, currentBalance } from './model/accounts'
+import { filterTransactions, summarizeTransactions } from './model/selectors'
 import { formatCNY, round2 } from './model/money'
-import { planAccountMigration, referencesAccount, resolveDefaultAccountId } from './model/accountRules'
+import {
+  planAccountMigration,
+  referencesAccount,
+  resolveDefaultAccountId,
+  resolveSelectedAccountId,
+} from './model/accountRules'
+import type { CategoryRefPatch } from './model/categoryRules'
+import { categoryLabel, planCategoryRename } from './model/categoryRules'
 import type { Transaction } from '../../core/types'
 import './finance.css'
 
-/** F4 账户切换器尚未接入，当前恒为「全部账户」；接入后改为 state 即可 */
-const SELECTED_ACCOUNT = 'all'
+interface FinanceUiPrefs {
+  lastAccountId?: string
+  selectedAccountId?: string
+}
+
+type Tab = 'records' | 'stats' | 'budget' | 'accounts' | 'categories' | 'recurring' | 'yearly'
 
 export default function Finance() {
-  const { transactions, addTransaction, updateTransaction, deleteTransaction, financeCategories, addFinanceCategory, deleteFinanceCategory, accounts, addAccount, updateAccount, deleteAccount, recurrings, addRecurring, deleteRecurring, updateRecurring } = useData()
-  const [tab, setTab] = useState<'records' | 'stats' | 'budget' | 'accounts' | 'recurring' | 'yearly'>('records')
+  const { transactions, addTransaction, updateTransaction, deleteTransaction, financeCategories, addFinanceCategory, updateFinanceCategory, deleteFinanceCategory, accounts, addAccount, updateAccount, deleteAccount, recurrings, addRecurring, deleteRecurring, updateRecurring } = useData()
+  const [tab, setTab] = useState<Tab>('records')
   const [show, setShow] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
-  const [form, setForm] = useState({ type: 'expense' as 'expense' | 'income', category: '餐饮', amount: '', account_id: '', date: dayjs().format('YYYY-MM-DD'), note: '' })
+  const [form, setForm] = useState({ type: 'expense' as 'expense' | 'income', category: '', amount: '', account_id: '', date: dayjs().format('YYYY-MM-DD'), note: '' })
   const [amountError, setAmountError] = useState('')
   const [newAccount, setNewAccount] = useState({ name: '', icon: '💳', opening: '' })
-  const [uiState, setUiState] = useState<{ lastAccountId?: string }>(() => load<{ lastAccountId?: string }>('p_finance_ui', {}))
+  const [prefs, setPrefs] = useState<FinanceUiPrefs>(() => load<FinanceUiPrefs>('p_finance_ui', {}))
   const [month, setMonth] = useState(dayjs().format('YYYY-MM'))
-  const [showCatMgr, setShowCatMgr] = useState(false)
-  const [newCat, setNewCat] = useState({ name: '', type: 'expense' as 'expense' | 'income', color: '#94a3b8', icon: '📦' })
   const [newRec, setNewRec] = useState({ name: '', amount: 0, cycle: 'monthly' as 'monthly' | 'yearly', day: 1, category: '其他', account: '微信' })
 
   /** 账户余额唯一来源：按全历史流水派生，任何增删改都自动重算 */
   const ledger = useMemo(() => buildLedger(transactions), [transactions])
-  const expCats = financeCategories.filter(c => c.type === 'expense')
-  const incCats = financeCategories.filter(c => c.type === 'income')
-  const mTx = transactions.filter(t => t.date.startsWith(month))
-  const mSummary = useMemo(() => monthSummary(transactions, month), [transactions, month])
+
+  // UI 偏好：选中账户不进 13 域；账户被删后自动回落「全部账户」
+  const selectedAccountId = resolveSelectedAccountId(accounts, prefs.selectedAccountId)
+  const selectedAccount = accounts.find(a => a.id === selectedAccountId) || null
+  const persistPrefs = (next: FinanceUiPrefs) => {
+    setPrefs(next)
+    save('p_finance_ui', next)
+  }
+  const pickAccount = (id: string) => persistPrefs({ ...prefs, selectedAccountId: id })
+
+  // 流水 / 月度 / 年度 / 分类统计共用同一套 selector
+  const visibleTx = useMemo(() => filterTransactions(transactions, { accountId: selectedAccountId }), [transactions, selectedAccountId])
+  const mTx = useMemo(() => filterTransactions(visibleTx, { month }), [visibleTx, month])
+  const mSummary = useMemo(() => summarizeTransactions(mTx), [mTx])
   const mExp = mSummary.expense
   const mInc = mSummary.income
+
+  const expCats = financeCategories.filter(c => c.type === 'expense')
+  const incCats = financeCategories.filter(c => c.type === 'income')
+
   const byCat = useMemo(() => {
-    const m: Record<string, number> = {}
-    mTx.filter(t => t.type === 'expense').forEach(t => { m[t.category] = (m[t.category] || 0) + t.amount })
-    return Object.entries(m).sort((a, b) => b[1] - a[1])
-  }, [mTx])
+    const map: Record<string, number> = {}
+    mTx.filter(t => t.type === 'expense').forEach(t => {
+      const label = categoryLabel(t.category, financeCategories)
+      map[label] = (map[label] || 0) + t.amount
+    })
+    return Object.entries(map).sort((a, b) => b[1] - a[1])
+  }, [mTx, financeCategories])
+
   const yearlyData = useMemo(() => {
     const y = month.slice(0, 4)
     const m: Record<string, { exp: number; inc: number }> = {}
     for (let i = 1; i <= 12; i++) {
       const key = `${y}-${String(i).padStart(2, '0')}`
-      const tx = transactions.filter(t => t.date.startsWith(key))
-      m[key] = { exp: tx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0), inc: tx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) }
+      const summary = summarizeTransactions(filterTransactions(visibleTx, { month: key }))
+      m[key] = { exp: summary.expense, inc: summary.income }
     }
     return m
-  }, [transactions, month])
+  }, [visibleTx, month])
 
-  const rememberAccount = (id: string) => {
-    const next = { ...uiState, lastAccountId: id }
-    setUiState(next)
-    save('p_finance_ui', next)
+  const rememberAccount = (id: string) => persistPrefs({ ...prefs, lastAccountId: id })
+
+  const accountNameOf = (t: Transaction) => {
+    const account = accounts.find(a => a.id === t.account_id)
+    return account ? account.name : '未归属'
   }
 
-  const accountNameOf = (t: Transaction) => accounts.find(a => a.id === t.account_id)?.name || t.account
+  const categoriesFor = (type: 'expense' | 'income') => type === 'expense' ? expCats : incCats
 
   const openAdd = (type?: 'expense' | 'income') => {
     const nextType = type || 'expense'
     const defaultId = resolveDefaultAccountId(accounts, {
-      selectedAccountId: SELECTED_ACCOUNT,
-      lastAccountId: uiState.lastAccountId,
+      selectedAccountId,
+      lastAccountId: prefs.lastAccountId,
     })
+    const cats = categoriesFor(nextType)
     setEditing(null)
     setAmountError('')
     setNewAccount({ name: '', icon: '💳', opening: '' })
     setForm({
       type: nextType,
-      category: nextType === 'income' ? (incCats[0]?.name || '生活费') : (expCats[0]?.name || '餐饮'),
+      category: cats[0]?.name || '',
       amount: '',
       account_id: defaultId || '',
       date: dayjs().format('YYYY-MM-DD'),
@@ -85,14 +115,16 @@ export default function Finance() {
     const defaultId = resolveDefaultAccountId(accounts, {
       editingAccountId: t.account_id,
       editingAccountName: t.account,
-      selectedAccountId: SELECTED_ACCOUNT,
-      lastAccountId: uiState.lastAccountId,
+      selectedAccountId,
+      lastAccountId: prefs.lastAccountId,
     })
+    const type = t.type === 'income' ? 'income' : 'expense'
+    const cats = categoriesFor(type)
     setEditing(t)
     setAmountError('')
     setForm({
-      type: t.type === 'income' ? 'income' : 'expense',
-      category: t.category,
+      type,
+      category: cats.some(c => c.name === t.category) ? t.category : '',
       amount: String(t.amount),
       account_id: defaultId || '',
       date: t.date,
@@ -133,12 +165,6 @@ export default function Finance() {
     setShow(false)
   }
 
-  const addCat = () => {
-    if (!newCat.name.trim()) return
-    addFinanceCategory(newCat)
-    setNewCat({ name: '', type: 'expense', color: '#94a3b8', icon: '📦' })
-  }
-
   const addRec = () => {
     if (!newRec.name.trim()) return
     addRecurring({ ...newRec, start_date: dayjs().format('YYYY-MM-DD') })
@@ -173,15 +199,50 @@ export default function Finance() {
     plan.recurrings.forEach(patch => updateRecurring(patch.id, { account: patch.account, account_id: patch.account_id }))
   }
 
-  const tabs: [string, string][] = [['records', '流水'], ['stats', '统计'], ['budget', '预算'], ['accounts', '账户'], ['recurring', '周期账单'], ['yearly', '年度']]
+  /** 删除收支分类：先把引用流水落到「未分类」，再删分类本身 */
+  const handleDeleteCategory = (id: string, patches: CategoryRefPatch[]) => {
+    patches.forEach(patch => updateTransaction(patch.id, { category: patch.category }))
+    deleteFinanceCategory(id)
+  }
+
+  /** 改名同步历史流水，避免旧快照变成「未分类」 */
+  const handleUpdateCategory = (id: string, patch: { name: string; color: string; icon: string }) => {
+    const prev = financeCategories.find(c => c.id === id)
+    updateFinanceCategory(id, patch)
+    if (prev) {
+      planCategoryRename(prev, patch.name, transactions).forEach(item => updateTransaction(item.id, { category: item.category }))
+    }
+  }
+
+  const tabs: [Tab, string][] = [
+    ['records', '流水'],
+    ['stats', '统计'],
+    ['budget', '预算'],
+    ['accounts', '账户'],
+    ['categories', '收支分类'],
+    ['recurring', '周期账单'],
+    ['yearly', '年度'],
+  ]
 
   return (
     <div className="finance-page">
+      <div className="fin-switcher">
+        <span className="fin-switcher-label">账户</span>
+        <select className="select" value={selectedAccountId} onChange={e => pickAccount(e.target.value)}>
+          <option value="all">全部账户</option>
+          {accounts.map(a => (
+            <option key={a.id} value={a.id}>{a.icon} {a.name} · {formatCNY(currentBalance(a, ledger))}</option>
+          ))}
+        </select>
+        <span className="fin-switcher-hint">切换只影响本页统计，不改任何数据</span>
+      </div>
+
       <div className="card" style={{ background: 'linear-gradient(135deg,#059669,#10b981)', color: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 13, opacity: 0.8 }}>
               <button onClick={() => { const el = document.createElement('input'); el.type = 'month'; el.value = month; el.onchange = (e: any) => setMonth(e.target.value); el.showPicker && el.showPicker() }} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 13 }}>{month} ▾</button>
+              {selectedAccount && <span className="fin-scope-tag">{selectedAccount.name} · {month}</span>}
             </div>
             <div style={{ fontSize: 28, fontWeight: 800, marginTop: 4 }}>{formatCNY(mExp)}</div>
             <div style={{ fontSize: 12, opacity: 0.8 }}>本月支出 · 收入 {formatCNY(mInc)} · 结余 {formatCNY(mSummary.net)}</div>
@@ -196,40 +257,28 @@ export default function Finance() {
       <div className="card">
         <div className="card-title">
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {tabs.map(([id, label]) => <button key={id} className={`btn ${tab === id ? 'btn-primary' : 'btn-ghost'}`} style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => setTab(id as any)}>{label}</button>)}
+            {tabs.map(([id, label]) => <button key={id} className={`btn ${tab === id ? 'btn-primary' : 'btn-ghost'}`} style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => setTab(id)}>{label}</button>)}
           </div>
-          {tab === 'records' && <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setShowCatMgr(!showCatMgr)}>分类管理</button>}
         </div>
 
         {tab === 'records' && (
           <>
-            {showCatMgr && (
-              <div style={{ marginBottom: 16, padding: 12, background: '#f8fafc', borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>支出分类</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {expCats.map(c => <span key={c.id} className="tag" style={{ background: c.color + '22', color: c.color, padding: '4px 10px' }}>{c.icon} {c.name}<button style={{ background: 'none', border: 'none', color: '#ef4444', marginLeft: 6, cursor: 'pointer' }} onClick={() => deleteFinanceCategory(c.id)}>×</button></span>)}
+            {[...mTx].sort((a, b) => b.date.localeCompare(a.date)).map(t => {
+              const unassigned = accountNameOf(t) === '未归属'
+              return (
+                <div key={t.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => openEdit(t)}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: t.type === 'expense' ? '#fee2e2' : '#dcfce7', display: 'flex', justifyContent: 'center', fontSize: 16 }}>{t.type === 'expense' ? '💸' : '💰'}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500 }}>{categoryLabel(t.category, financeCategories)}{t.note && <span style={{ color: '#94a3b8', fontSize: 12, marginLeft: 6 }}>{t.note}</span>}</div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                      {t.date} · {unassigned ? <span className="fin-unassigned">未归属</span> : accountNameOf(t)}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 700, color: t.type === 'expense' ? '#ef4444' : '#22c55e' }}>{t.type === 'expense' ? '-' : '+'}{formatCNY(t.amount)}</div>
+                  <button className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: 12, color: '#ef4444' }} onClick={(e) => { e.stopPropagation(); deleteTransaction(t.id) }}>×</button>
                 </div>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>收入分类</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {incCats.map(c => <span key={c.id} className="tag" style={{ background: c.color + '22', color: c.color, padding: '4px 10px' }}>{c.icon} {c.name}<button style={{ background: 'none', border: 'none', color: '#ef4444', marginLeft: 6, cursor: 'pointer' }} onClick={() => deleteFinanceCategory(c.id)}>×</button></span>)}
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <input className="input" style={{ flex: 1, minWidth: 100 }} placeholder="新分类名" value={newCat.name} onChange={e => setNewCat({ ...newCat, name: e.target.value })} />
-                  <select className="select" style={{ width: 100 }} value={newCat.type} onChange={e => setNewCat({ ...newCat, type: e.target.value as any })}><option value="expense">支出</option><option value="income">收入</option></select>
-                  <input type="color" value={newCat.color} onChange={e => setNewCat({ ...newCat, color: e.target.value })} style={{ width: 36, height: 36, padding: 0, border: 'none' }} />
-                  <input className="input" style={{ width: 60 }} placeholder="图标" value={newCat.icon} onChange={e => setNewCat({ ...newCat, icon: e.target.value })} />
-                  <button className="btn btn-primary" onClick={addCat}>添加</button>
-                </div>
-              </div>
-            )}
-            {[...mTx].sort((a, b) => b.date.localeCompare(a.date)).map(t => (
-              <div key={t.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }} onClick={() => openEdit(t)}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: t.type === 'expense' ? '#fee2e2' : '#dcfce7', display: 'flex', justifyContent: 'center', fontSize: 16 }}>{t.type === 'expense' ? '💸' : '💰'}</div>
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 500 }}>{t.category}{t.note && <span style={{ color: '#94a3b8', fontSize: 12, marginLeft: 6 }}>{t.note}</span>}</div><div style={{ fontSize: 12, color: '#94a3b8' }}>{t.date} · {accountNameOf(t)}</div></div>
-                <div style={{ fontWeight: 700, color: t.type === 'expense' ? '#ef4444' : '#22c55e' }}>{t.type === 'expense' ? '-' : '+'}{formatCNY(t.amount)}</div>
-                <button className="btn btn-ghost" style={{ padding: '2px 6px', fontSize: 12, color: '#ef4444' }} onClick={(e) => { e.stopPropagation(); deleteTransaction(t.id) }}>×</button>
-              </div>
-            ))}
+              )
+            })}
             {mTx.length === 0 && <div className="empty">本月暂无记录</div>}
           </>
         )}
@@ -275,6 +324,16 @@ export default function Finance() {
           />
         )}
 
+        {tab === 'categories' && (
+          <CategoriesPanel
+            categories={financeCategories}
+            transactions={transactions}
+            onAdd={draft => addFinanceCategory(draft)}
+            onUpdate={handleUpdateCategory}
+            onDelete={handleDeleteCategory}
+          />
+        )}
+
         {tab === 'recurring' && (
           <div>
             <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>定期自动扣款/收入提醒</div>
@@ -298,7 +357,7 @@ export default function Finance() {
 
         {tab === 'yearly' && (
           <div>
-            <div style={{ fontWeight: 600, marginBottom: 12 }}>{month.slice(0, 4)}年度收支</div>
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>{month.slice(0, 4)}年度收支{selectedAccount ? ` · ${selectedAccount.name}` : ''}</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
               {Object.entries(yearlyData).map(([m, d]) => (
                 <div key={m} className="card" style={{ margin: 0, padding: 10, textAlign: 'center' }}>
@@ -332,8 +391,22 @@ export default function Finance() {
         <div className="finance-page">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className={`btn ${form.type === 'expense' ? 'btn-danger' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => setForm({ ...form, type: 'expense', category: expCats[0]?.name || '餐饮' })}>支出</button>
-              <button className={`btn ${form.type === 'income' ? 'btn-primary' : 'btn-outline'}`} style={{ flex: 1 }} onClick={() => setForm({ ...form, type: 'income', category: incCats[0]?.name || '生活费' })}>收入</button>
+              <button
+                className={`btn ${form.type === 'expense' ? 'btn-danger' : 'btn-outline'}`}
+                style={{ flex: 1 }}
+                onClick={() => {
+                  const cats = categoriesFor('expense')
+                  setForm({ ...form, type: 'expense', category: cats.some(c => c.name === form.category) ? form.category : (cats[0]?.name || '') })
+                }}
+              >支出</button>
+              <button
+                className={`btn ${form.type === 'income' ? 'btn-primary' : 'btn-outline'}`}
+                style={{ flex: 1 }}
+                onClick={() => {
+                  const cats = categoriesFor('income')
+                  setForm({ ...form, type: 'income', category: cats.some(c => c.name === form.category) ? form.category : (cats[0]?.name || '') })
+                }}
+              >收入</button>
             </div>
             <div>
               <input
@@ -347,7 +420,10 @@ export default function Finance() {
               />
               {amountError && <div className="fin-error">{amountError}</div>}
             </div>
-            <select className="select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{(form.type === 'expense' ? expCats : incCats).map(c => <option key={c.id}>{c.name}</option>)}</select>
+            <select className="select" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+              <option value="">未分类</option>
+              {categoriesFor(form.type).map(c => <option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}
+            </select>
             <div style={{ display: 'flex', gap: 8 }}>
               {accounts.length > 0 ? (
                 <select className="select" value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })}>

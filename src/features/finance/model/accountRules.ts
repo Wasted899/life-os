@@ -66,6 +66,18 @@ export function resolveDefaultAccountId(
   return accounts.length > 0 ? accounts[0].id : null
 }
 
+/**
+ * 账户切换器的选中态还原：
+ * 存储值仍指向一个存在的账户就恢复它，否则（未选 / 已删除 / 非法值）回落「全部账户」。
+ */
+export function resolveSelectedAccountId(
+  accounts: Account[],
+  storedAccountId?: string | null,
+): string {
+  if (!storedAccountId || storedAccountId === 'all') return 'all'
+  return accounts.some((account) => account.id === storedAccountId) ? storedAccountId : 'all'
+}
+
 type AccountRefRecord = Pick<Transaction, 'id' | 'account' | 'account_id'>
 
 /**
