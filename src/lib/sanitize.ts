@@ -66,8 +66,8 @@ export const sanitizeFinanceCategories=(raw:any)=>{
   const list=arr(raw)
   return list.length?list.map((c:any)=>({...c,id:c.id||uid(),name:c.name||'未分类',type:c.type||'expense',color:c.color||'#94a3b8',icon:c.icon||'📦'})):def
 }
-export const sanitizeAccounts=(raw:any)=>arr(raw).map((a:any)=>({...a,id:a.id||uid(),name:a.name||'账户',balance:typeof a.balance==='number'?a.balance:0,icon:a.icon||'💳'}))
-export const sanitizeRecurrings=(raw:any)=>arr(raw).map((r:any)=>({...r,id:r.id||uid(),name:r.name||'周期账单',amount:typeof r.amount==='number'?r.amount:0,cycle:r.cycle==='yearly'?'yearly':'monthly',day:typeof r.day==='number'?r.day:1,category:r.category||'其他',account:r.account||'微信',start_date:r.start_date||r.startDate||dayjs().format('YYYY-MM-DD')}))
+export const sanitizeAccounts=(raw:any)=>arr(raw).map((a:any)=>({...a,id:a.id||uid(),name:a.name||'账户',balance:typeof a.balance==='number'?a.balance:0,...(typeof a.opening_balance==='number'&&Number.isFinite(a.opening_balance)?{opening_balance:a.opening_balance}:{}),icon:a.icon||'💳'}))
+export const sanitizeRecurrings=(raw:any)=>arr(raw).map((r:any)=>({...r,id:r.id||uid(),name:r.name||'周期账单',amount:typeof r.amount==='number'?r.amount:0,cycle:r.cycle==='yearly'?'yearly':'monthly',day:typeof r.day==='number'?r.day:1,category:r.category||'其他',account:r.account||'微信',type:r.type==='income'?'income':'expense',...(r.account_id?{account_id:r.account_id}:{}),start_date:r.start_date||r.startDate||dayjs().format('YYYY-MM-DD')}))
 export const sanitizeAll=(data:any)=>{
   if(!data||typeof data!=='object')return{}
   return{todos:sanitizeTodos(data.todos),lists:sanitizeLists(data.lists),categories:sanitizeCategories(data.categories),goals:sanitizeGoals(data.goals),habits:sanitizeHabits(data.habits),days:sanitizeDays(data.days),timeBlocks:sanitizeTimeBlocks(data.timeBlocks),pomodoros:sanitizePomodoros(data.pomodoros),transactions:sanitizeTransactions(data.transactions),memos:sanitizeMemos(data.memos),financeCategories:sanitizeFinanceCategories(data.financeCategories),accounts:sanitizeAccounts(data.accounts),recurrings:sanitizeRecurrings(data.recurrings)}

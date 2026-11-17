@@ -294,8 +294,12 @@ alter table pomodoros add column if not exists tag text;
 
 alter table transactions add column if not exists account_id text;
 
+alter table accounts add column if not exists opening_balance numeric;
+
 alter table recurrings add column if not exists next_date text;
 alter table recurrings add column if not exists custom_period text;
+alter table recurrings add column if not exists type text default 'expense';
+alter table recurrings add column if not exists account_id text;
 
 
 -- ============================================================

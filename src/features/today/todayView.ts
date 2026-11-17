@@ -17,6 +17,7 @@ import type {
 } from '../../core/types'
 import { habitDue, progressOf, type HabitProgress } from '../habits/habitSchedule'
 import { buildGoalIndex, goalLevelOf, goalPeriodKeyOf, periodKeyFor, GOAL_LEVELS } from '../goals/goalTree'
+import { financeSummaryOfDay } from '../finance/model/selectors'
 
 /** 各卡片最多展示条数 */
 export const TODAY_LIMITS = {
@@ -202,31 +203,8 @@ const buildGoals = (
   return { goals: [], goalRemaining: 0, goalLevel: null }
 }
 
-const buildFinance = (transactions: Transaction[], today: string): TodayFinance => {
-  let expense = 0
-  let income = 0
-  let count = 0
-  const byCategory = new Map<string, number>()
-  transactions.forEach(tx => {
-    if (tx.date !== today) return
-    if (tx.type === 'expense') {
-      expense += tx.amount
-      count += 1
-      byCategory.set(tx.category, (byCategory.get(tx.category) || 0) + tx.amount)
-    } else if (tx.type === 'income') {
-      income += tx.amount
-    }
-  })
-  let topCategory = ''
-  let topCategoryAmount = 0
-  byCategory.forEach((amount, category) => {
-    if (amount > topCategoryAmount) {
-      topCategory = category
-      topCategoryAmount = amount
-    }
-  })
-  return { expense, income, count, topCategory, topCategoryAmount }
-}
+const buildFinance = (transactions: Transaction[], today: string): TodayFinance =>
+  financeSummaryOfDay(transactions, today)
 
 const buildFocusHours = (timeBlocks: TimeBlock[], today: string): number =>
   timeBlocks

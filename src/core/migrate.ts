@@ -260,8 +260,9 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: 'id', to: 'id', kind: 'keep' },
     { from: 'name', to: 'name', kind: 'keep' },
     { from: '*', to: 'name', kind: 'default', defaultValue: '账户' },
-    { from: 'balance', to: 'balance', kind: 'coerce', note: '非数字转 0' },
+    { from: 'balance', to: 'balance', kind: 'coerce', note: '非数字转 0；M2 起仅作迁移输入，不再作为当前余额读口径' },
     { from: '*', to: 'balance', kind: 'default', defaultValue: 0 },
+    { from: 'opening_balance', to: 'opening_balance', kind: 'coerce', note: 'M2：仅当字段缺失时按 balance − 该账户流水净额折算一次；已存在则原样保留（幂等）' },
     { from: 'icon', to: 'icon', kind: 'keep' },
     { from: '*', to: 'icon', kind: 'default', defaultValue: '💳' },
   ],
@@ -282,6 +283,9 @@ export const MAPPING_RULES: Record<DomainKey, readonly MappingRule[]> = {
     { from: 'startDate', to: 'start_date', kind: 'merge', note: 'start_date 缺失时兜底' },
     { from: 'start_date + cycle + day', to: 'next_date', kind: 'derive', note: '待确认在 migrate 还是运行时计算' },
     { from: '*', to: 'custom_period', kind: 'default', note: '旧结构只支持 monthly/yearly' },
+    { from: 'type', to: 'type', kind: 'coerce', note: 'M2：仅 income/expense，其余→expense' },
+    { from: '*', to: 'type', kind: 'default', defaultValue: 'expense' },
+    { from: 'account', to: 'account_id', kind: 'derive', note: 'M2：与流水一致，先按 id 再按名称精确匹配；匹配不到时 account_id 留空' },
   ],
 }
 
@@ -301,8 +305,8 @@ export const KNOWN_KEYS: Record<DomainKey, readonly string[]> = {
   transactions: ['id', 'date', 'type', 'category', 'amount', 'account', 'note', 'remark', 'account_id'],
   memos: ['id', 'title', 'content', 'text', 'category', 'pinned', 'completed', 'created_at'],
   financeCategories: ['id', 'name', 'type', 'color', 'icon'],
-  accounts: ['id', 'name', 'balance', 'icon'],
-  recurrings: ['id', 'name', 'amount', 'cycle', 'day', 'category', 'account', 'start_date', 'startDate', 'next_date', 'custom_period'],
+  accounts: ['id', 'name', 'balance', 'opening_balance', 'icon'],
+  recurrings: ['id', 'name', 'amount', 'cycle', 'day', 'category', 'account', 'start_date', 'startDate', 'next_date', 'custom_period', 'type', 'account_id'],
 }
 
 export type MigrationIssueCode =
@@ -313,6 +317,7 @@ export type MigrationIssueCode =
   | 'unknown-key-kept'
   | 'ref-repaired'
   | 'goal-parent-repaired'
+  | 'opening-backfilled'
 
 export interface MigrationIssue {
   domain: DomainKey | 'root'
@@ -718,6 +723,42 @@ export function resolveAccount(
   return { account: raw, account_id: rawId, matched: 'none' }
 }
 
+const moneyToCents = (value: number): number =>
+  Math.round((Number.isFinite(value) ? value : 0) * 100)
+
+/**
+ * M2：期初余额一次性折算。
+ * 仅处理 opening_balance === undefined 的账户：
+ *   opening_balance = balance − 该账户全部流水净额（收入为正、支出为负）
+ * 已存在 opening_balance 的账户原样保留，因此重复调用结果不变（幂等）。
+ * 必须在 accounts 与 transactions 都完成规范化之后调用。
+ */
+export function backfillOpeningBalances(
+  accounts: Account[],
+  transactions: Transaction[],
+): { accounts: Account[]; changed: number } {
+  if (accounts.length === 0) return { accounts, changed: 0 }
+
+  const netCents = new Map<string, number>()
+  for (const tx of transactions) {
+    const accountId = typeof tx.account_id === 'string' ? tx.account_id : ''
+    if (!accountId) continue
+    const cents = moneyToCents(tx.amount)
+    const signed = tx.type === 'income' ? cents : -cents
+    netCents.set(accountId, (netCents.get(accountId) || 0) + signed)
+  }
+
+  let changed = 0
+  const next = accounts.map((account) => {
+    if (account.opening_balance !== undefined) return account
+    const openingCents = moneyToCents(account.balance) - (netCents.get(account.id) || 0)
+    changed += 1
+    return { ...account, opening_balance: openingCents / 100 }
+  })
+
+  return { accounts: next, changed }
+}
+
 function normalizeTransaction(
   item: Record<string, unknown>,
   ctx: NormalizeContext,
@@ -764,6 +805,15 @@ function normalizeAccount(item: Record<string, unknown>): Account {
   out.id = asText(item.id) || uid()
   out.name = asText(item.name) || '账户'
   out.balance = asNum(item.balance, 0)
+  const rawOpening = item.opening_balance
+  const opening = typeof rawOpening === 'number'
+    ? rawOpening
+    : typeof rawOpening === 'string' && rawOpening.trim() !== ''
+      ? Number(rawOpening)
+      : NaN
+  // 只认有限数字；缺失/非法时删除字段，交给 backfillOpeningBalances 折算
+  if (Number.isFinite(opening)) out.opening_balance = opening
+  else delete out.opening_balance
   out.icon = asText(item.icon) || '💳'
   return out as unknown as Account
 }
@@ -777,6 +827,10 @@ function normalizeRecurring(item: Record<string, unknown>, ctx: NormalizeContext
   out.day = Math.min(31, Math.max(1, Math.round(asNum(item.day, 1))))
   out.category = asOptionalText(item.category) || '其他'
   out.account = asOptionalText(item.account) || '微信'
+  out.type = item.type === 'income' ? 'income' : 'expense'
+  const resolved = resolveAccount(item.account, item.account_id, ctx.accounts)
+  out.account = resolved.account || (resolved.account_id ? '' : '微信')
+  out.account_id = resolved.account_id
   out.start_date = asDate(pick(item.start_date, item.startDate)) || ctx.today
   out.next_date = asDate(item.next_date)
   out.custom_period = asOptionalText(item.custom_period)
@@ -1021,6 +1075,21 @@ export function migrate(raw: unknown): MigrationResult {
         path: 'goals[*].parent_id',
         code: 'goal-parent-repaired',
         note: `解绑 ${repaired.changed} 个非法父目标引用（父不存在 / 自指 / 层级不匹配 / 成环）`,
+      })
+    }
+  }
+
+  // M2：期初余额折算必须在 accounts / transactions 都规范化完成后执行；
+  // 只补 opening_balance === undefined 的账户，已存在则原样保留，保证幂等。
+  if (data.accounts.length > 0) {
+    const backfilled = backfillOpeningBalances(data.accounts, data.transactions)
+    if (backfilled.changed > 0) {
+      data.accounts = backfilled.accounts
+      issues.push({
+        domain: 'accounts',
+        path: 'accounts[*].opening_balance',
+        code: 'opening-backfilled',
+        note: `按 balance − 流水净额折算 ${backfilled.changed} 个账户的期初余额（仅补缺失字段）`,
       })
     }
   }

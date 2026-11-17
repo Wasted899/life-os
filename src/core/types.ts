@@ -200,7 +200,13 @@ export interface FinanceCategory {
 export interface Account {
   id: ID
   name: string
+  /**
+   * 旧字段：历史录入的“当前余额”。
+   * M2 起当前余额改由「期初 + 流水净额」派生，本字段只作迁移输入与兼容保留，不再作为读口径。
+   */
   balance: number
+  /** M2：期初余额（元，允许负）。存在时当前余额 = 期初 + 该账户全部流水净额 */
+  opening_balance?: number
   icon: string
 }
 
@@ -218,6 +224,10 @@ export interface Recurring {
   next_date?: ISODate
   /** 自定义周期描述（批次 1 决定结构化方式） */
   custom_period?: string
+  /** M2：收支方向；旧数据缺省按 expense */
+  type?: TransactionType
+  /** M2：关联账户 id；旧数据可为空，由 account 名称解析 */
+  account_id?: ID
 }
 
 /** 13. 备忘录 */

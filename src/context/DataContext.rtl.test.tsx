@@ -214,7 +214,9 @@ describe('DataContext 习惯排期（M1-13）',()=>{
     const todoWrites=()=>setItemSpy.mock.calls.filter(([key])=>key==='planner:p_todos').length
 
     // 完成一条，用于验证重算时不会被删
-    const first=ctx.todos.find(t=>t.habit_id===habitId)!
+    // 选非今天的待办：周一 periodRange 从今天开始，第一条就是今天，
+    // 完成它会顺带把习惯打卡置为今天，导致后面的 check_dates 断言失效。
+    const first=ctx.todos.find(t=>t.habit_id===habitId&&t.due_date!==today)!
     act(()=>ctx.updateTodo(first.id,{completed:true}))
 
     // 打卡：只改 check_dates，不改变待办 id 集合
