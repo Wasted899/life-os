@@ -1,7 +1,9 @@
 import {useEffect,useMemo,useState} from 'react'
 import dayjs from 'dayjs'
+import {useSearchParams} from 'react-router-dom'
 import {useData} from '../../context/DataContext'
 import type {Quadrant,Todo} from '../../core/types'
+import {readDateParam} from '../../lib/dateParam'
 import {useTodosUiPrefs} from './hooks/useTodosUiPrefs'
 import {useTodosViewData} from './hooks/useTodosViewData'
 import TodoToolbar from './components/TodoToolbar'
@@ -40,7 +42,13 @@ import {todayISO} from './date'
 export default function TodosPage() {
   const {todos,addTodo,updateTodo,deleteTodo,lists,addList,updateList,deleteList,categories,addCategory,updateCategory,deleteCategory,habits,updateHabit,addTimeBlock} = useData()
   const {prefs,patch,toggleCollapse} = useTodosUiPrefs()
-  const [date,setDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [params]=useSearchParams()
+  // 日历跳转携带 ?date= 时直接选中该日；无参数或非法值回落今天。页面只读 query，不回写。
+  const [date,setDate] = useState(()=>readDateParam(params.get('date')) ?? dayjs().format('YYYY-MM-DD'))
+  useEffect(()=>{
+    const next=readDateParam(params.get('date'))
+    if(next) setDate(next)
+  },[params])
   const [batchMode,setBatchMode] = useState(false)
   const [selected,setSelected] = useState<Set<string>>(new Set())
   const [showAdd,setShowAdd] = useState(false)

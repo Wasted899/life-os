@@ -1,11 +1,19 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useData } from '../../context/DataContext'
 import Modal from '../../core/ui/Modal'
 import dayjs from 'dayjs'
+import { readDateParam } from '../../lib/dateParam'
 
 export default function TimeStats() {
   const { timeBlocks, addTimeBlock, updateTimeBlock, deleteTimeBlock, categories } = useData()
-  const [date, setDate] = useState(dayjs().format('YYYY-MM-DD'))
+  const [params] = useSearchParams()
+  // 日历跳转携带 ?date= 时直接选中该日；无参数或非法值回落今天。页面只读 query，不回写。
+  const [date, setDate] = useState(() => readDateParam(params.get('date')) ?? dayjs().format('YYYY-MM-DD'))
+  useEffect(() => {
+    const next = readDateParam(params.get('date'))
+    if (next) setDate(next)
+  }, [params])
   const [showDP, setShowDP] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<any>(null)
