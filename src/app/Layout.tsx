@@ -4,9 +4,13 @@ import {useTheme} from '../context/ThemeContext'
 import {useAuth} from '../context/AuthContext'
 import dayjs from 'dayjs'
 import {NAV_GROUPS} from '../core/nav'
+import {visibleNavGroups} from '../core/modules'
+import {useDisabledModules} from './useDisabledModules'
 
 export default function Layout({children}:{children:ReactNode}){
   const{user,signOut}=useAuth()
+  const disabledModules=useDisabledModules()
+  const navGroups=visibleNavGroups(NAV_GROUPS,disabledModules)
   const[um,setUm]=useState(false)
   const[nick,setNick]=useState(()=>{try{return localStorage.getItem('p_nick')||'同学'}catch{return'同学'}})
   const[avatar,setAvatar]=useState(()=>{try{return localStorage.getItem('p_avatar')||''}catch{return''}})
@@ -19,7 +23,7 @@ export default function Layout({children}:{children:ReactNode}){
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-brand">📋 规划助手</div>
-        {NAV_GROUPS.map(g=>(<div key={g.id}><div className="sidebar-group-title">{g.title}</div>{g.items.map(i=>(<NavLink key={i.to} to={i.to} className="sidebar-item" end={i.to==='/'}><span>{i.icon}</span><span>{i.label}</span></NavLink>))}</div>))}
+        {navGroups.map(g=>(<div key={g.id}><div className="sidebar-group-title">{g.title}</div>{g.items.map(i=>(<NavLink key={i.to} to={i.to} className="sidebar-item" end={i.to==='/'}><span>{i.icon}</span><span>{i.label}</span></NavLink>))}</div>))}
       </aside>
       <main className="main-content">
         <header className="header">

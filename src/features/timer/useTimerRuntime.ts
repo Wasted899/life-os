@@ -16,6 +16,7 @@ import {
   LATE_END_TOLERANCE_MS,
   createSession,
   elapsedMs,
+  hasRunningSession,
   pause,
   reset,
   restoreRuntime,
@@ -25,11 +26,15 @@ import {
   toTimeBlockDraft,
 } from './model/timerMachine'
 import type { TimerMode, TimerRuntime } from './model/timerMachine'
+import type { TimeBlockRefType, TimeBlockSource } from '../../core/types'
 
 export const TIMER_RUNTIME_KEY = 'timer:runtime'
-const STORAGE_KEY = `planner:${TIMER_RUNTIME_KEY}`
+export const POMODORO_RUNTIME_KEY = 'pomodoro:runtime'
 const TAKEOVER_STALE_MS = 30 * 1000
 const HEARTBEAT_MS = 10 * 1000
+
+/** 计时器与番茄钟共用时间轴，同时运行会让统计双计，因此启动前互斥 */
+export const CROSS_TIMER_CONFLICT_MESSAGE = '计时器与番茄钟不能同时运行，是否停止另一个并开始本次？'
 
 export interface TimerPending {
   runtime: TimerRuntime
@@ -51,6 +56,22 @@ export interface StartTimerInput {
   plannedMs?: number
   title?: string
   category?: string
+  linkedTodoId?: string
+  todoLabel?: string
+}
+
+export interface TimerRuntimeOptions {
+  /** 运行态 key（不含 planner: 前缀），默认计时器 */
+  runtimeKey?: string
+  /** 与之互斥的另一侧运行态 key */
+  conflictRuntimeKey?: string
+  /** 写入 time_blocks 的 source / ref_type，由页面决定；hook 不按番茄钟分支 */
+  source?: TimeBlockSource
+  refType?: TimeBlockRefType
+  /** 时间块落库成功后的回调（番茄钟用于写 pomodoros，必须幂等） */
+  onLogged?: (log: TimerLastLog, runtime: TimerRuntime) => void
+  /** 撤销时间块时的回调（番茄钟用于同步删除 pomodoros） */
+  onUndo?: (log: TimerLastLog) => void
 }
 
 export interface TimerRuntimeApi {
@@ -71,9 +92,20 @@ export interface TimerRuntimeApi {
   clearNotice: () => void
 }
 
-export function useTimerRuntime(): TimerRuntimeApi {
+export function useTimerRuntime(options: TimerRuntimeOptions = {}): TimerRuntimeApi {
+  const runtimeKey = options.runtimeKey ?? TIMER_RUNTIME_KEY
+  const storageKey = `planner:${runtimeKey}`
+  const conflictKey = options.conflictRuntimeKey
+  const source = options.source ?? 'timer'
+  const refType = options.refType ?? 'timer'
+
   const { user, loading } = useAuth()
   const { logTimeBlock, deleteTimeBlock } = useData()
+
+  const onLoggedRef = useRef(options.onLogged)
+  onLoggedRef.current = options.onLogged
+  const onUndoRef = useRef(options.onUndo)
+  onUndoRef.current = options.onUndo
 
   const owner = user?.id ?? 'local'
   const ownerRef = useRef(owner)
@@ -112,19 +144,20 @@ export function useTimerRuntime(): TimerRuntimeApi {
       minutes: Math.round(worked / 60000),
     }
     setLastLog(result)
+    onLoggedRef.current?.(result, state)
     return result
   }, [])
 
   const clearRuntimeStorage = useCallback(() => {
-    save(TIMER_RUNTIME_KEY, null)
-  }, [])
+    save(runtimeKey, null)
+  }, [runtimeKey])
 
   // 1) 首次恢复：账号解析完成后再读，避免把 local 运行态误判为串号
   useEffect(() => {
     if (initializedRef.current || loading) return
     initializedRef.current = true
 
-    const raw = load<TimerRuntime | null>(TIMER_RUNTIME_KEY, null)
+    const raw = load<TimerRuntime | null>(runtimeKey, null)
     const stamp = Date.now()
     const result = restoreRuntime(raw, stamp, owner)
 
@@ -177,8 +210,8 @@ export function useTimerRuntime(): TimerRuntimeApi {
   // 2) 运行态变化即持久化（不含剩余秒数）
   useEffect(() => {
     if (!initializedRef.current) return
-    save(TIMER_RUNTIME_KEY, runtime)
-  }, [runtime])
+    save(runtimeKey, runtime)
+  }, [runtime, runtimeKey])
 
   // 3) 账号切换：运行态不跨账号，直接丢弃
   useEffect(() => {
@@ -223,23 +256,23 @@ export function useTimerRuntime(): TimerRuntimeApi {
       if (!current || current.status !== 'running' || current.ownerTabId !== tabIdRef.current) return
       const next = { ...current, updatedAt: Date.now() }
       runtimeRef.current = next
-      save(TIMER_RUNTIME_KEY, next)
+      save(runtimeKey, next)
     }, HEARTBEAT_MS)
     return () => window.clearInterval(timer)
-  }, [runtime?.status, runtime?.sessionId])
+  }, [runtime?.status, runtime?.sessionId, runtimeKey])
 
   // 7) 多标签页：storage 事件只在本页被动跟随
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY) return
-      const next = load<TimerRuntime | null>(TIMER_RUNTIME_KEY, null)
+      if (event.key !== storageKey) return
+      const next = load<TimerRuntime | null>(runtimeKey, null)
       setNow(Date.now())
       setPending(null)
       setRuntime(next)
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
-  }, [])
+  }, [runtimeKey, storageKey])
 
   // 8) 结束判定：倒计时到点 / 接管过期持有页
   useEffect(() => {
@@ -286,6 +319,19 @@ export function useTimerRuntime(): TimerRuntimeApi {
       }
     }
 
+    // 跨模块互斥：计时器与番茄钟共用同一条时间轴，同时运行会让统计双计
+    if (conflictKey) {
+      const other = load<TimerRuntime | null>(conflictKey, null)
+      const alive = hasRunningSession(other, ownerRef.current)
+      if (alive) {
+        const accepted = typeof window === 'undefined'
+          || window.confirm(CROSS_TIMER_CONFLICT_MESSAGE)
+        if (!accepted) return
+        // 接管：把另一侧暂停并写回，另一标签页会通过 storage 事件同步
+        save(conflictKey, pause(other, Date.now()))
+      }
+    }
+
     const stamp = Date.now()
     const session = createSession({
       sessionId: uid(),
@@ -296,6 +342,10 @@ export function useTimerRuntime(): TimerRuntimeApi {
       plannedMs: input.plannedMs,
       title: input.title,
       category: input.category,
+      source,
+      refType,
+      linkedTodoId: input.linkedTodoId,
+      todoLabel: input.todoLabel,
     })
     handledSessionRef.current = ''
     setPending(null)
@@ -303,7 +353,7 @@ export function useTimerRuntime(): TimerRuntimeApi {
     setNotice('')
     setRuntime(start(session, stamp))
     setNow(stamp)
-  }, [])
+  }, [conflictKey, source, refType])
 
   const pauseTimer = useCallback(() => {
     const current = runtimeRef.current
@@ -398,6 +448,7 @@ export function useTimerRuntime(): TimerRuntimeApi {
   const undoLastLog = useCallback(() => {
     if (!lastLog) return
     lastLog.ids.forEach(id => deleteRef.current(id))
+    onUndoRef.current?.(lastLog)
     const current = runtimeRef.current
     if (current && current.sessionId === lastLog.sessionId) {
       setRuntime({ ...current, writtenBlockId: undefined })

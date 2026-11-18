@@ -21,7 +21,7 @@ type Ctx={
   habits:Habit[];addHabit:(h:Omit<Habit,'id'>)=>void;updateHabit:(id:string,p:Partial<Habit>)=>void;deleteHabit:(id:string)=>void
   days:ImportantDay[];addDay:(d:Omit<ImportantDay,'id'>)=>void;updateDay:(id:string,p:Partial<ImportantDay>)=>void;deleteDay:(id:string)=>void
   timeBlocks:TimeBlock[];addTimeBlock:(t:Omit<TimeBlock,'id'>)=>void;updateTimeBlock:(id:string,p:Partial<TimeBlock>)=>void;deleteTimeBlock:(id:string)=>void;logTimeBlock:(t:Omit<TimeBlock,'id'>&{id?:string})=>{id:string;deduped:boolean}
-  pomodoros:Pomodoro[];addPomodoro:(p:Omit<Pomodoro,'id'>)=>void
+  pomodoros:Pomodoro[];addPomodoro:(p:Omit<Pomodoro,'id'>&{id?:string})=>void;deletePomodoro:(id:string)=>void
   transactions:Transaction[];addTransaction:(t:Omit<Transaction,'id'>&{id?:string})=>Transaction;updateTransaction:(id:string,p:Partial<Transaction>)=>void;deleteTransaction:(id:string)=>void
   memos:Memo[];addMemo:(m:Omit<Memo,'id'>)=>void;updateMemo:(id:string,p:Partial<Memo>)=>void;deleteMemo:(id:string)=>void
   financeCategories:FinanceCategory[];addFinanceCategory:(c:Omit<FinanceCategory,'id'>)=>void;updateFinanceCategory:(id:string,p:Partial<FinanceCategory>)=>void;deleteFinanceCategory:(id:string)=>void
@@ -482,10 +482,15 @@ export function DataProvider({children}:{children:ReactNode}){
     return newItem
   }
 
-  const addPomodoro=(p:Omit<Pomodoro,'id'>)=>{
-    const newItem={...p,id:uid()}
-    setPomodoros(prev=>[...prev,newItem])
-    if(loggedIn&&isCloudMode)insertRow('pomodoros',newItem)
+  const addPomodoro=(p:Omit<Pomodoro,'id'>&{id?:string})=>{
+    const newItem={...p,id:p.id??uid()}
+    setPomodoros(prev=>prev.some(x=>x.id===newItem.id)?prev.map(x=>x.id===newItem.id?newItem:x):[...prev,newItem])
+    if(loggedIn&&isCloudMode)upsertRow('pomodoros',newItem)
+  }
+
+  const deletePomodoro=(id:string)=>{
+    setPomodoros(prev=>prev.filter(p=>p.id!==id))
+    if(loggedIn&&isCloudMode)deleteRow('pomodoros',id)
   }
 
   // ========== 习惯打卡时同步对应待办完成 ==========
@@ -806,7 +811,7 @@ export function DataProvider({children}:{children:ReactNode}){
       habits,addHabit:h.add,updateHabit,deleteHabit,
       days,addDay:d.add,updateDay:d.update,deleteDay:d.del,
       timeBlocks,addTimeBlock:tb.add,updateTimeBlock:tb.update,deleteTimeBlock,logTimeBlock,
-      pomodoros,addPomodoro,
+      pomodoros,addPomodoro,deletePomodoro,
       transactions,addTransaction,updateTransaction:tr.update,deleteTransaction:tr.del,
       memos,addMemo:m.add,updateMemo:m.update,deleteMemo:m.del,
       financeCategories,addFinanceCategory:fc.add,updateFinanceCategory:fc.update,deleteFinanceCategory:fc.del,

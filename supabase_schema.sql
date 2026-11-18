@@ -178,6 +178,7 @@ create table if not exists time_blocks (
   duration numeric,
   ref_type text,
   ref_id text,
+  linked_todo_id text,
   created_at timestamptz default now()
 );
 
@@ -291,6 +292,7 @@ alter table categories add column if not exists icon text default '📁';
 alter table time_blocks add column if not exists duration numeric;
 alter table time_blocks add column if not exists ref_type text;
 alter table time_blocks add column if not exists ref_id text;
+alter table time_blocks add column if not exists linked_todo_id text;
 
 alter table pomodoros add column if not exists task_id text;
 alter table pomodoros add column if not exists task_label text;
@@ -334,6 +336,11 @@ create index if not exists idx_recurrings_user on recurrings(user_id);
 create unique index if not exists uq_time_blocks_ref
   on time_blocks (user_id, ref_type, ref_id)
   where ref_type is not null and ref_id is not null;
+
+-- 番茄钟结构化关联待办：不参与 uq_time_blocks_ref，同一待办可对应多个番茄会话
+create index if not exists idx_time_blocks_linked_todo
+  on time_blocks (user_id, linked_todo_id)
+  where linked_todo_id is not null;
 
 
 -- ============================================================

@@ -23,7 +23,7 @@ import {
   removeTimerCategory,
   renameTimerCategory,
 } from './model/timerCategories'
-import { useTimerRuntime } from './useTimerRuntime'
+import { POMODORO_RUNTIME_KEY, useTimerRuntime } from './useTimerRuntime'
 import { TimerCompleteModal } from './TimerCompleteModal'
 import './timer.css'
 
@@ -35,7 +35,7 @@ const minutesBetween = (start: number, end: number): number =>
 
 export default function TimerPage() {
   const { timeBlocks } = useData()
-  const timer = useTimerRuntime()
+  const timer = useTimerRuntime({ conflictRuntimeKey: POMODORO_RUNTIME_KEY })
 
   const [mode, setMode] = useState<TimerMode>('countdown')
   const [minutes, setMinutes] = useState(25)

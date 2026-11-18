@@ -21,6 +21,7 @@
 
 import dayjs from 'dayjs'
 import { uid } from './storage'
+import { MODULE_ORDER, normalizeDisabledModules } from './modules'
 import { sanitizeAll, sanitizeMemoItems } from '../lib/sanitize'
 import {
   isGoalLevel,
@@ -43,7 +44,6 @@ import type {
   ImportantDay,
   LocalData,
   Memo,
-  ModuleId,
   Pomodoro,
   Quote,
   Recurring,
@@ -304,7 +304,7 @@ export const KNOWN_KEYS: Record<DomainKey, readonly string[]> = {
   goals: ['id', 'title', 'name', 'type', 'period', 'level', 'parent_id', 'parentId', 'progress', 'status', 'description', 'desc', 'period_key', 'start_date', 'end_date'],
   habits: ['id', 'title', 'name', 'frequency', 'custom_days', 'customDays', 'check_dates', 'category_id', 'categoryId', 'target_count', 'target_period', 'monthly_day', 'day_of_month'],
   days: ['id', 'title', 'name', 'date', 'category', 'pinned', 'type'],
-  timeBlocks: ['id', 'date', 'start', 'end', 'title', 'name', 'category', 'source', 'duration', 'ref_type', 'ref_id'],
+  timeBlocks: ['id', 'date', 'start', 'end', 'title', 'name', 'category', 'source', 'duration', 'ref_type', 'ref_id', 'linked_todo_id'],
   pomodoros: ['id', 'date', 'duration', 'task', 'completed', 'mode', 'task_id', 'task_label', 'tag'],
   transactions: ['id', 'date', 'type', 'category', 'amount', 'account', 'note', 'remark', 'account_id', 'recurring_id'],
   memos: ['id', 'title', 'content', 'text', 'category', 'pinned', 'completed', 'created_at', 'kind', 'items'],
@@ -673,6 +673,7 @@ function normalizeTimeBlock(item: Record<string, unknown>, ctx: NormalizeContext
   out.duration = end > start ? Math.round((end - start) * 100) / 100 : undefined
   out.ref_type = asOptionalText(item.ref_type)
   out.ref_id = asOptionalText(item.ref_id)
+  out.linked_todo_id = asOptionalText(item.linked_todo_id)
   delete out.name
   return out as unknown as TimeBlock
 }
@@ -1146,24 +1147,8 @@ export interface LocalExtras {
   user: UserMeta
 }
 
-const MODULE_IDS: readonly ModuleId[] = [
-  'today',
-  'todos',
-  'goals',
-  'habits',
-  'importantDays',
-  'calendar',
-  'timeStats',
-  'pomodoro',
-  'review',
-  'memos',
-  'finance',
-  'guide',
-  'settings',
-]
-
-const isModuleId = (value: unknown): value is ModuleId =>
-  typeof value === 'string' && (MODULE_IDS as readonly string[]).includes(value)
+/** 导出/导入的模块白名单：直接复用唯一权威源，新增模块（如 timer）不会再被静默丢弃 */
+export const MODULE_IDS: readonly string[] = MODULE_ORDER
 
 function normalizeReview(item: unknown): ReviewEntry | null {
   if (!isPlainObject(item)) return null
@@ -1317,7 +1302,7 @@ export function migrateExtras(raw: unknown): LocalExtras {
         ? source.disabledModules
         : []
   const settings: AppSettings = {
-    disabledModules: disabledRaw.filter(isModuleId),
+    disabledModules: normalizeDisabledModules(disabledRaw),
   }
   if (hasValue(rawSettings.fontScale)) settings.fontScale = asNum(rawSettings.fontScale, 1)
   if (hasValue(rawSettings.updated_at)) settings.updated_at = asText(rawSettings.updated_at)

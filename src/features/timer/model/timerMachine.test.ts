@@ -7,6 +7,7 @@ import {
   elapsedMs,
   formatClock,
   formatHours,
+  hasRunningSession,
   localDateKey,
   pause,
   remainingMs,
@@ -296,6 +297,69 @@ describe('toTimeBlockDraft：写入草稿', () => {
   it('标题为空时回落到分类名', () => {
     const ended = stop(countdown({ title: '' }), at(1, 9, 5))
     expect(toTimeBlockDraft(ended, at(1, 9, 5))[0].title).toBe('学习')
+  })
+})
+
+describe('参数化：source / refType / linkedTodoId 只透传，不分支', () => {
+  it('番茄会话的时间块带上 pomodoro ref 与 linked_todo_id', () => {
+    const session = createSession({
+      ...base,
+      source: 'pomodoro',
+      refType: 'pomodoro',
+      linkedTodoId: 'todo-1',
+      todoLabel: '写论文',
+    })
+    const ended = stop(start(session, base.now), base.now + 25 * 60 * 1000)
+    const draft = toTimeBlockDraft(ended, base.now + 25 * 60 * 1000)[0]
+    expect(draft.source).toBe('pomodoro')
+    expect(draft.ref_type).toBe('pomodoro')
+    expect(draft.ref_id).toBe('s1')
+    expect(draft.linked_todo_id).toBe('todo-1')
+  })
+
+  it('未传 source/refType 时保持计时器默认值', () => {
+    const ended = stop(countdown(), at(1, 9, 5))
+    const draft = toTimeBlockDraft(ended, at(1, 9, 5))[0]
+    expect(draft.source).toBe('timer')
+    expect(draft.ref_type).toBe('timer')
+    expect(draft.linked_todo_id).toBeUndefined()
+  })
+
+  it('reset 保留 source/refType/linkedTodoId', () => {
+    const session = start(
+      createSession({ ...base, source: 'pomodoro', refType: 'pomodoro', linkedTodoId: 'todo-1' }),
+      base.now,
+    )
+    const next = reset(session, base.now, 's2')
+    expect(next.source).toBe('pomodoro')
+    expect(next.refType).toBe('pomodoro')
+    expect(next.linkedTodoId).toBe('todo-1')
+  })
+
+  it('旧运行态缺字段时按计时器默认值恢复', () => {
+    const state = start(createSession(base), base.now)
+    const legacy: Record<string, unknown> = { ...state }
+    delete legacy.source
+    delete legacy.refType
+    const restored = restoreRuntime(legacy as unknown as TimerRuntime, base.now)
+    expect(restored.runtime?.source).toBe('timer')
+    expect(restored.runtime?.refType).toBe('timer')
+  })
+})
+
+describe('跨模块互斥：running 不因心跳过期而放行', () => {
+  const stale = {
+    ...start(createSession(base), base.now),
+    owner: 'u1',
+    // 超过 30 秒，甚至超过一天；只要还在 running 就必须拦截
+    updatedAt: base.now - 24 * 60 * 60 * 1000,
+  }
+
+  it('同一账号的 running 会话即使 updatedAt 很旧也算冲突', () => {
+    expect(hasRunningSession(stale, 'u1')).toBe(true)
+    expect(hasRunningSession({ ...stale, status: 'paused' }, 'u1')).toBe(false)
+    expect(hasRunningSession(stale, 'u2')).toBe(false)
+    expect(hasRunningSession(null, 'u1')).toBe(false)
   })
 })
 

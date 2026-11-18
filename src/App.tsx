@@ -1,12 +1,14 @@
 import {lazy,Suspense,useEffect} from 'react'
 import type {ComponentType,LazyExoticComponent,ReactNode} from 'react'
-import {HashRouter,Routes,Route,useNavigate} from 'react-router-dom'
+import {HashRouter,Routes,Route,useNavigate,Navigate} from 'react-router-dom'
 import Layout from './app/Layout'
 import ErrorBoundary from './app/ErrorBoundary'
 import CloudSyncGate from './app/CloudSyncGate'
 import RecurringAutoPost from './features/finance/RecurringAutoPost'
 import {useAuth} from './context/AuthContext'
 import {ROUTE_DEFS} from './core/nav'
+import {isModuleDisabled} from './core/modules'
+import {useDisabledModules} from './app/useDisabledModules'
 import type {ModuleId} from './core/types'
 
 // 页面懒加载映射：核心模块只保留"元数据 + 加载器"，不 import 页面实现
@@ -55,6 +57,13 @@ function AppGuard({children}:{children:ReactNode}){
   return<>{children}</>
 }
 
+// 模块开关守卫：被关闭的模块不渲染页面组件，直接回首页
+function RequireModule({module,children}:{module:ModuleId;children:ReactNode}){
+  const disabled=useDisabledModules()
+  if(isModuleDisabled(module,disabled))return<Navigate to="/" replace/>
+  return<>{children}</>
+}
+
 export default function App(){
   return(
     <HashRouter>
@@ -78,7 +87,7 @@ export default function App(){
                   <Routes>
                     {ROUTE_DEFS.map(({path,module})=>{
                       const Page=PAGES[module]
-                      return<Route key={path} path={path} element={<Page/>}/>
+                      return<Route key={path} path={path} element={<RequireModule module={module}><Page/></RequireModule>}/>
                     })}
                   </Routes>
                 </Suspense>

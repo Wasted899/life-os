@@ -81,6 +81,35 @@ describe('记账模块架构隔离', () => {
 })
 
 /**
+ * 模块开关是纯逻辑：core/modules.ts 只能依赖 core 内部，
+ * 不得反向 import context/** 或 features/**，否则「关闭模块」会绑定到数据层。
+ */
+const IMPURE_MODULE_IMPORT = /['"][^'"]*(?:context|features)\//
+
+const scanModuleSwitchesImpureImports = (map: FileMap): string[] =>
+  Object.entries(map)
+    .filter(([path]) => path === '/src/core/modules.ts')
+    .filter(([, source]) => IMPURE_MODULE_IMPORT.test(source))
+    .map(([path]) => path)
+
+describe('模块开关纯逻辑隔离', () => {
+  it('core/modules.ts 必须存在且被扫描到', () => {
+    expect(files['/src/core/modules.ts']).toBeTruthy()
+  })
+
+  it('core/modules.ts 不得 import context/** 或 features/**', () => {
+    expect(scanModuleSwitchesImpureImports(files)).toEqual([])
+  })
+
+  it('规则对合成样本能真正报出违规', () => {
+    const dirty: FileMap = {
+      '/src/core/modules.ts': "import { useData } from '../context/DataContext'",
+    }
+    expect(scanModuleSwitchesImpureImports(dirty)).toEqual(['/src/core/modules.ts'])
+  })
+})
+
+/**
  * 余额只允许派生：UI 不得读 Account.balance，也不得把 balance 当作补丁写回。
  * opening_balance 是合法字段，正则里的 \b 保证不会误伤。
  * model/accounts.ts 是唯一允许读 balance 的兼容回落实现。

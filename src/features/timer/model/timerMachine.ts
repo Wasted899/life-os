@@ -8,7 +8,7 @@
  * 3. 写入 time_blocks 的草稿只在这里生成，保证「一次会话只落一条」的 id/ref 规则一致。
  */
 
-import type { TimeBlock } from '../../../core/types'
+import type { TimeBlock, TimeBlockRefType, TimeBlockSource } from '../../../core/types'
 
 export const TIMER_RUNTIME_VERSION = 1 as const
 /** 单次会话时长上限：24 小时，超出部分直接夹回 */
@@ -53,6 +53,14 @@ export interface TimerRuntime {
   endedAt?: number
   title: string
   category: string
+  /** 写入 time_blocks 的来源，由创建方透传；machine 不解释其含义 */
+  source: TimeBlockSource
+  /** 写入 time_blocks 的 ref_type，由创建方透传；machine 不按番茄钟分支 */
+  refType: TimeBlockRefType
+  /** 可选关联待办（番茄钟使用），原样写入 linked_todo_id */
+  linkedTodoId?: string
+  /** 关联待办的展示文本，仅用于页面回显 */
+  todoLabel?: string
   /** 已落库的时间块 id（单条或跨零点第一条），用于撤销与防重入 */
   writtenBlockId?: string
   updatedAt: number
@@ -67,6 +75,10 @@ export interface CreateSessionInput {
   plannedMs?: number
   title?: string
   category?: string
+  source?: TimeBlockSource
+  refType?: TimeBlockRefType
+  linkedTodoId?: string
+  todoLabel?: string
 }
 
 export interface RestoreResult {
@@ -155,6 +167,10 @@ export function createSession(input: CreateSessionInput): TimerRuntime {
     ...(plannedMs !== undefined ? { plannedMs, remainingMs: plannedMs } : {}),
     title: input.title ?? '',
     category: input.category ?? '',
+    source: input.source ?? 'timer',
+    refType: input.refType ?? 'timer',
+    ...(input.linkedTodoId ? { linkedTodoId: input.linkedTodoId } : {}),
+    ...(input.todoLabel ? { todoLabel: input.todoLabel } : {}),
     updatedAt: input.now,
   }
 }
@@ -259,6 +275,10 @@ export function reset(state: TimerRuntime, now: number, sessionId: string): Time
     plannedMs: state.plannedMs,
     title: state.title,
     category: state.category,
+    source: state.source,
+    refType: state.refType,
+    linkedTodoId: state.linkedTodoId,
+    todoLabel: state.todoLabel,
   })
 }
 
@@ -341,6 +361,11 @@ export function restoreRuntime(
     endedAt: isValidNumber(item.endedAt) ? item.endedAt : undefined,
     title: typeof item.title === 'string' ? item.title : '',
     category: typeof item.category === 'string' ? item.category : '',
+    // 旧运行态没有这两个字段：按计时器默认值恢复，不丢会话
+    source: typeof item.source === 'string' ? (item.source as TimeBlockSource) : 'timer',
+    refType: typeof item.refType === 'string' ? (item.refType as TimeBlockRefType) : 'timer',
+    linkedTodoId: typeof item.linkedTodoId === 'string' && item.linkedTodoId ? item.linkedTodoId : undefined,
+    todoLabel: typeof item.todoLabel === 'string' && item.todoLabel ? item.todoLabel : undefined,
     writtenBlockId: typeof item.writtenBlockId === 'string' ? item.writtenBlockId : undefined,
     updatedAt: isValidNumber(item.updatedAt) ? item.updatedAt : now,
   }
@@ -456,6 +481,18 @@ export function splitAcrossMidnight(startMs: number, durationMs: number): SplitS
 }
 
 /**
+ * 跨模块互斥判定：同账号只要存在 running 会话就算冲突。
+ * 这里故意不看 updatedAt：页面切换会卸载组件、心跳停止，
+ * 但会话在逻辑上仍在运行，用新鲜度放行会造成重叠计时。
+ */
+export function hasRunningSession(
+  runtime: Pick<TimerRuntime, 'status' | 'owner'> | null | undefined,
+  owner: string,
+): boolean {
+  return !!runtime && runtime.status === 'running' && runtime.owner === owner
+}
+
+/**
  * 生成待写入的 time_blocks 草稿。
  * - 时间轴按「结束时刻 - 实际已用」反推，暂停会被压缩掉，保证 end-start === duration。
  * - 跨零点拆成两条，ref_id 加 #1/#2，主键同步加后缀。
@@ -485,9 +522,10 @@ export function toTimeBlockDraft(
     end: segment.end,
     title,
     category,
-    source: 'timer',
-    ref_type: 'timer',
+    source: state.source ?? 'timer',
+    ref_type: state.refType ?? 'timer',
     ref_id: sessionRefId(state.sessionId, multi ? segment.index : undefined),
+    ...(state.linkedTodoId ? { linked_todo_id: state.linkedTodoId } : {}),
     duration: segment.hours,
   }))
 }

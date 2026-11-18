@@ -77,7 +77,7 @@ export const sanitizeTransactions=(raw:any)=>arr(raw).map((t:any)=>{
   if(typeof tx.recurring_id!=='string'||!tx.recurring_id)delete tx.recurring_id
   return tx
 })
-export const sanitizeTimeBlocks=(raw:any)=>arr(raw).map((t:any)=>({...t,id:t.id||uid(),date:t.date||dayjs().format('YYYY-MM-DD'),start:typeof t.start==='number'?t.start:parseFloat(t.start)||9,end:typeof t.end==='number'?t.end:parseFloat(t.end)||10,title:t.title||t.name||'未命名',category:t.category||'其他',source:t.source||''}))
+export const sanitizeTimeBlocks=(raw:any)=>arr(raw).map((t:any)=>({...t,id:t.id||uid(),date:t.date||dayjs().format('YYYY-MM-DD'),start:typeof t.start==='number'?t.start:parseFloat(t.start)||9,end:typeof t.end==='number'?t.end:parseFloat(t.end)||10,title:t.title||t.name||'未命名',category:t.category||'其他',source:t.source||'',linked_todo_id:typeof t.linked_todo_id==='string'&&t.linked_todo_id?t.linked_todo_id:undefined}))
 export const sanitizeGoals=(raw:any)=>arr(raw).map((g:any)=>({...g,id:g.id||uid(),title:g.title||g.name||'未命名目标',type:g.type||g.period||'yearly',parent_id:g.parent_id||g.parentId||null,progress:typeof g.progress==='number'?g.progress:0,status:g.status||'active',description:g.description||g.desc||''}))
 export const sanitizeMemos=(raw:any)=>arr(raw).map((m:any)=>{
   const items=sanitizeMemoItems(m.items)

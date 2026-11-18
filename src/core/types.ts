@@ -157,6 +157,8 @@ export interface TimeBlock {
   duration?: number
   ref_type?: TimeBlockRefType
   ref_id?: ID
+  /** 结构化关联待办；ref_type='pomodoro' 时承载 task_id，避免占用 ref 唯一索引 */
+  linked_todo_id?: ID
 }
 
 /** 8. 番茄钟记录 */
