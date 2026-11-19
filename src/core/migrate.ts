@@ -22,6 +22,7 @@
 import dayjs from 'dayjs'
 import { uid } from './storage'
 import { MODULE_ORDER, normalizeDisabledModules } from './modules'
+import { normalizeReviewKey, reviewCreatedAt } from './reviewKey'
 import { sanitizeAll, sanitizeMemoItems } from '../lib/sanitize'
 import {
   isGoalLevel,
@@ -1150,37 +1151,47 @@ export interface LocalExtras {
 /** 导出/导入的模块白名单：直接复用唯一权威源，新增模块（如 timer）不会再被静默丢弃 */
 export const MODULE_IDS: readonly string[] = MODULE_ORDER
 
-function normalizeReview(item: unknown): ReviewEntry | null {
+/**
+ * 复盘归一：兼容旧页面的四种裸 key 形状与结构化 reviews。
+ *
+ * 修复的旧问题：
+ * 1. id 不再随导入随机生成，统一为确定性 `${period_type}:${period_key}`，同周期只有一条；
+ * 2. period_key 走 core/reviewKey 严格校验（日期存在、ISO 周存在、月份范围）；
+ * 3. 缺少 created_at 时用周期起点兜底，导出多次不会漂移。
+ */
+export function normalizeReview(item: unknown): ReviewEntry | null {
   if (!isPlainObject(item)) return null
 
   let periodType: ReviewPeriod | undefined
-  let periodKey = ''
+  let rawKey = ''
   const explicitType = asText(item.period_type)
   const explicitKey = asText(item.period_key)
 
   if (explicitType && explicitKey && ['daily', 'weekly', 'monthly', 'yearly'].includes(explicitType)) {
     periodType = explicitType as ReviewPeriod
-    periodKey = explicitKey
+    rawKey = explicitKey
   } else if (hasValue(item.date)) {
     periodType = 'daily'
-    periodKey = asDate(item.date) || asText(item.date)
+    rawKey = asText(item.date)
   } else if (hasValue(item.week)) {
     periodType = 'weekly'
-    periodKey = asText(item.week)
+    rawKey = asText(item.week)
   } else if (hasValue(item.month)) {
     periodType = 'monthly'
-    periodKey = asText(item.month)
+    rawKey = asText(item.month)
   } else if (hasValue(item.year)) {
     periodType = 'yearly'
-    periodKey = asText(item.year)
+    rawKey = asText(item.year)
   }
 
-  if (!periodType || !periodKey) return null
+  if (!periodType) return null
+  const periodKey = normalizeReviewKey(periodType, rawKey)
+  if (!periodKey) return null
 
   const sections: ReviewSections = {}
   if (isPlainObject(item.sections)) {
     for (const [key, value] of Object.entries(item.sections)) {
-      if (typeof value === 'string') sections[key] = value
+      if (typeof value === 'string') sections[key.trim()] = value
     }
   }
   const put = (key: string, value: unknown) => {
@@ -1196,18 +1207,46 @@ function normalizeReview(item: unknown): ReviewEntry | null {
     put('next', pick(nextRaw, item.next))
   }
 
-  const mood = item.mood === undefined ? undefined : Math.min(5, Math.max(1, Math.round(asNum(item.mood, 3))))
+  // mood 只属于日复盘；周/月/年即使旧数据带了也丢弃，避免同一字段两种含义
+  const mood = periodType === 'daily' && item.mood !== undefined
+    ? Math.min(5, Math.max(1, Math.round(asNum(item.mood, 3))))
+    : undefined
 
   return {
-    id: asText(item.id) || `${periodType}:${periodKey}`,
+    id: `${periodType}:${periodKey}`,
     period_type: periodType,
     period_key: periodKey,
     mood,
     sections,
-    created_at: asOptionalText(item.created_at) || new Date().toISOString(),
+    created_at: asOptionalText(item.created_at) || reviewCreatedAt(periodType, periodKey),
     updated_at: asOptionalText(item.updated_at),
   }
 }
+
+/** 同周期去重：保留更新时间较新的一条，sections 按“新覆盖旧、旧补缺”合并 */
+export function dedupeReviews(reviews: ReviewEntry[]): ReviewEntry[] {
+  const map = new Map<string, ReviewEntry>()
+  for (const review of reviews) {
+    const key = `${review.period_type}:${review.period_key}`
+    const current = map.get(key)
+    if (!current) {
+      map.set(key, review)
+      continue
+    }
+    const currentTime = current.updated_at || current.created_at || ''
+    const nextTime = review.updated_at || review.created_at || ''
+    const [older, newer] = currentTime <= nextTime ? [current, review] : [review, current]
+    map.set(key, {
+      ...older,
+      ...newer,
+      sections: { ...older.sections, ...newer.sections },
+      created_at: older.created_at || newer.created_at,
+      updated_at: newer.updated_at || older.updated_at,
+    })
+  }
+  return Array.from(map.values())
+}
+
 
 function normalizeTheme(item: unknown): Theme | null {
   if (!isPlainObject(item)) return null
@@ -1278,9 +1317,11 @@ const pickArray = (value: unknown): unknown[] => (Array.isArray(value) ? value :
 export function migrateExtras(raw: unknown): LocalExtras {
   const source = isPlainObject(raw) ? (isPlainObject(raw.data) ? raw.data : raw) : {}
 
-  const reviews = pickArray(source.reviews)
-    .map(normalizeReview)
-    .filter((item): item is ReviewEntry => !!item)
+  const reviews = dedupeReviews(
+    pickArray(source.reviews)
+      .map(normalizeReview)
+      .filter((item): item is ReviewEntry => !!item),
+  )
 
   const themes = pickArray(source.themes)
     .filter((item) => !isPlainObject(item) || item.custom !== false)
@@ -1345,6 +1386,8 @@ export function splitLegacyReviews(reviews: ReviewEntry[]): {
         done: sections.done || '',
         undone: sections.undone || '',
         tomorrow: sections.tomorrow || '',
+        // 旧页面没有 summary 输入框，但兼容导入的结构化数据里可能带，回写时不丢
+        summary: sections.summary || '',
         mood: review.mood ?? 3,
       })
     } else if (review.period_type === 'weekly') {

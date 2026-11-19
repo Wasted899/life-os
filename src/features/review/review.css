@@ -1,0 +1,351 @@
+/* 复盘模块样式：全部限定在 .review-page / .rv- 命名空间内。
+   与时间统计保持一致，浅色变量放在 :root，Modal portal 后仍可继承。 */
+
+:root {
+  --rv-text: #1e293b;
+  --rv-muted: #94a3b8;
+  --rv-line: #e2e8f0;
+  --rv-surface: #f8fafc;
+  --rv-primary: #2563eb;
+  --rv-danger: #ef4444;
+}
+
+.review-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rv-muted {
+  color: var(--rv-muted);
+  font-size: 12px;
+}
+
+.rv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rv-segment {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--rv-surface);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.rv-segment button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--rv-text);
+  cursor: pointer;
+}
+
+.rv-segment button.is-active {
+  background: var(--rv-primary);
+  color: #fff;
+}
+
+.rv-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rv-date-input {
+  width: auto;
+  min-width: 130px;
+}
+
+.rv-mini {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.rv-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rv-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.rv-banner {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+}
+
+.rv-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.rv-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rv-mood {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.rv-mood-stars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.rv-star {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: #d1d5db;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.rv-star.is-on {
+  color: #f59e0b;
+}
+
+.rv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rv-field-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rv-textarea {
+  resize: vertical;
+  min-height: 74px;
+  width: 100%;
+}
+
+.rv-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.rv-danger {
+  color: var(--rv-danger);
+  border-color: var(--rv-danger);
+  margin-right: auto;
+}
+
+.rv-snapshot {
+  border: 1px solid var(--rv-line);
+  border-radius: 10px;
+  background: var(--rv-surface);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rv-snapshot-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rv-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rv-metric-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.rv-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.rv-bar i {
+  display: block;
+  height: 100%;
+  background: var(--rv-primary);
+  border-radius: 3px;
+}
+
+.rv-mini-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.rv-mini-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rv-done {
+  text-decoration: line-through;
+  color: var(--rv-muted);
+}
+
+.rv-history {
+  border-top: 1px solid var(--rv-line);
+  padding-top: 12px;
+}
+
+.rv-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.rv-history-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.rv-filters {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.rv-chip {
+  border: 1px solid var(--rv-line);
+  background: #fff;
+  color: var(--rv-text);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rv-chip.is-active {
+  border-color: var(--rv-primary);
+  color: var(--rv-primary);
+}
+
+.rv-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rv-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.rv-history-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--rv-text);
+}
+
+.rv-history-period {
+  font-size: 12px;
+  color: var(--rv-muted);
+}
+
+.rv-history-snippet {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-history-delete {
+  color: var(--rv-danger);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.rv-empty {
+  color: var(--rv-muted);
+  font-size: 13px;
+  padding: 14px 0;
+  margin: 0;
+}
+
+.rv-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.rv-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  z-index: 1200;
+}
+
+@media (max-width: 880px) {
+  .rv-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .rv-history-main {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

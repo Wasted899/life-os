@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Goal, Habit, ImportantDay, TimeBlock, Todo, Transaction } from '../../core/types'
+import type { Goal, Habit, ImportantDay, TimeBlock, Todo } from '../../core/types'
 import { buildTodayView, TODAY_LIMITS } from './todayView'
 
 const TODAY = '2026-11-14' // 周六，ISO 第 46 周
@@ -39,15 +39,6 @@ const importantDay = (over: Partial<ImportantDay> & { id: string }): ImportantDa
   ...over,
 })
 
-const tx = (over: Partial<Transaction> & { id: string }): Transaction => ({
-  date: TODAY,
-  type: 'expense',
-  category: '餐饮',
-  amount: 0,
-  account: '现金',
-  ...over,
-})
-
 const block = (over: Partial<TimeBlock> & { id: string }): TimeBlock => ({
   date: TODAY,
   start: 9,
@@ -61,7 +52,7 @@ const empty = {
   todos: [] as Todo[],
   habits: [] as Habit[],
   days: [] as ImportantDay[],
-  transactions: [] as Transaction[],
+  finance: { expense: 0, income: 0, count: 0, topCategory: '', topCategoryAmount: 0 },
   timeBlocks: [] as TimeBlock[],
   goals: [] as Goal[],
 }
@@ -200,19 +191,10 @@ describe('buildTodayView · 重要日子', () => {
 })
 
 describe('buildTodayView · 记账摘要', () => {
-  it('只统计今天：支出合计、笔数、最大分类，收入单独小计', () => {
-    const transactions = [
-      tx({ id: 'a', category: '餐饮', amount: 30 }),
-      tx({ id: 'b', category: '交通', amount: 50 }),
-      tx({ id: 'c', type: 'income', category: '工资', amount: 100 }),
-      tx({ id: 'other-day', date: '2026-11-13', category: '购物', amount: 999 }),
-    ]
-    const view = buildTodayView({ ...empty, transactions, today: TODAY })
-    expect(view.finance.expense).toBe(80)
-    expect(view.finance.income).toBe(100)
-    expect(view.finance.count).toBe(2)
-    expect(view.finance.topCategory).toBe('交通')
-    expect(view.finance.topCategoryAmount).toBe(50)
+  it('原样透传调用方算好的当日摘要（口径由 finance/model/selectors 单测覆盖）', () => {
+    const finance = { expense: 80, income: 100, count: 2, topCategory: '交通', topCategoryAmount: 50 }
+    const view = buildTodayView({ ...empty, finance, today: TODAY })
+    expect(view.finance).toBe(finance)
   })
 })
 

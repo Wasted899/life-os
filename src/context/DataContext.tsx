@@ -86,19 +86,25 @@ function readInitialLocalData(){
 
 /** 读取 6 个本地实体（导出时实时读取，避免与 ThemeContext / ReviewPage 形成双份状态） */
 function readLocalExtras(){
+  // 复盘：新 key 存在（包括空数组）即视为唯一真源；只有从未迁移过时才合并 4 个旧 key
+  const canonical=readRaw('p_reviews')
   const reviewsOf=(key:string,period:'daily'|'weekly'|'monthly'|'yearly')=>{
     const list=readRaw(key)
     return Array.isArray(list)
-      ?list.filter(item=>!!item&&typeof item==='object').map(item=>({period_type:period,...(item as Record<string,unknown>)}))
+      // period_type 必须放在展开之后：旧条目自带的 period_type 不能覆盖真实周期
+      ?list.filter(item=>!!item&&typeof item==='object').map(item=>({...(item as Record<string,unknown>),period_type:period}))
       :[]
   }
-  return migrateExtras({
-    reviews:[
+  const reviewSource=Array.isArray(canonical)
+    ?canonical
+    :[
       ...reviewsOf('p_daily_reviews','daily'),
       ...reviewsOf('p_weekly_reviews','weekly'),
       ...reviewsOf('p_monthly_reviews','monthly'),
       ...reviewsOf('p_yearly_reviews','yearly'),
-    ],
+    ]
+  return migrateExtras({
+    reviews:reviewSource,
     themes:load<Theme[]>('p_themes',[]),
     quotes:load<Quote[]>('p_quotes',[]),
     guides:load<GuideEntry[]>('p_guides',[]),
@@ -667,7 +673,9 @@ export function DataProvider({children}:{children:ReactNode}){
 
       // 6 个本地实体：只有导入文件确实带有对应字段时才写回
       const extras=migrateExtras(raw)
-      if(hasKey(source,['reviews','p_daily_reviews','p_weekly_reviews','p_monthly_reviews','p_yearly_reviews'])){
+      if(hasKey(source,['reviews','p_reviews','p_daily_reviews','p_weekly_reviews','p_monthly_reviews','p_yearly_reviews'])){
+        // 新 key 是唯一真源；旧 4 个 key 同步回写，兼容回滚到旧版本
+        save('p_reviews',extras.reviews)
         const legacy=splitLegacyReviews(extras.reviews)
         writeLegacy('p_daily_reviews',legacy.daily)
         writeLegacy('p_weekly_reviews',legacy.weekly)

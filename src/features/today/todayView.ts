@@ -13,11 +13,9 @@ import type {
   ImportantDay,
   TimeBlock,
   Todo,
-  Transaction,
 } from '../../core/types'
 import { habitDue, progressOf, type HabitProgress } from '../habits/habitSchedule'
 import { buildGoalIndex, goalLevelOf, goalPeriodKeyOf, periodKeyFor, GOAL_LEVELS } from '../goals/goalTree'
-import { financeSummaryOfDay } from '../finance/model/selectors'
 
 /** 各卡片最多展示条数 */
 export const TODAY_LIMITS = {
@@ -91,7 +89,11 @@ export interface TodayViewInput {
   todos: Todo[]
   habits: Habit[]
   days: ImportantDay[]
-  transactions: Transaction[]
+  /**
+   * 当日记账摘要：由调用方（首页 / 复盘）用 finance 层选择器算好后传入。
+   * 本函数不直接读取记账实体，非记账模块只消费算好的摘要。
+   */
+  finance: TodayFinance
   timeBlocks: TimeBlock[]
   goals: Goal[]
   /** YYYY-MM-DD */
@@ -203,9 +205,6 @@ const buildGoals = (
   return { goals: [], goalRemaining: 0, goalLevel: null }
 }
 
-const buildFinance = (transactions: Transaction[], today: string): TodayFinance =>
-  financeSummaryOfDay(transactions, today)
-
 const buildFocusHours = (timeBlocks: TimeBlock[], today: string): number =>
   timeBlocks
     .filter(block => block.date === today)
@@ -213,13 +212,13 @@ const buildFocusHours = (timeBlocks: TimeBlock[], today: string): number =>
 
 /** 唯一入口：入参全部只读，返回全新对象，不修改任何输入数组 */
 export function buildTodayView(input: TodayViewInput): TodayView {
-  const { todos, habits, days, transactions, timeBlocks, goals, today } = input
+  const { todos, habits, days, finance, timeBlocks, goals, today } = input
   return {
     ...buildTodos(todos, today),
     ...buildHabits(habits, today),
     ...buildDays(days, today),
     ...buildGoals(goals, today),
-    finance: buildFinance(transactions, today),
+    finance,
     focusHours: buildFocusHours(timeBlocks, today),
   }
 }

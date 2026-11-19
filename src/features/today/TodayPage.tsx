@@ -8,6 +8,7 @@ import CompleteTimeModal from '../todos/components/CompleteTimeModal'
 import { useHabitCheckin } from '../habits/useHabitCheckin'
 import { useDailyQuote } from '../quotes/useDailyQuote'
 import { buildTodayView } from './todayView'
+import { financeSummaryOfDay } from '../finance/model/selectors'
 
 const FALLBACK_QUOTE = '今天也要好好生活。'
 
@@ -78,9 +79,12 @@ export default function Today() {
   const navigate = useNavigate()
   const today = dayjs().format('YYYY-MM-DD')
 
+  // 记账摘要由首页自己按 finance 层口径算好再传入，buildTodayView 不直接接触记账实体
+  const finance = useMemo(() => financeSummaryOfDay(transactions, today), [transactions, today])
+
   const view = useMemo(
-    () => buildTodayView({ todos, habits, days, transactions, timeBlocks, goals, today }),
-    [todos, habits, days, transactions, timeBlocks, goals, today],
+    () => buildTodayView({ todos, habits, days, finance, timeBlocks, goals, today }),
+    [todos, habits, days, finance, timeBlocks, goals, today],
   )
 
   const { pendingCheck, check, finishCheck, cancelCheck } = useHabitCheckin()
