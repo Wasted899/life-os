@@ -13,6 +13,7 @@
  */
 import dayjs, { type Dayjs } from 'dayjs'
 import type { Habit } from '../../core/types'
+import { isoWeekKey } from '../../core/periodKey'
 
 export type HabitPeriod = 'week' | 'month'
 
@@ -96,17 +97,6 @@ export const habitDue = (
 /** monthly_day 强制月周期；其余看 target_period，缺省按周 */
 export const resolvePeriod = (habit: Pick<Habit, 'frequency' | 'target_period'>): HabitPeriod =>
   habit.frequency === 'monthly_day' ? 'month' : habit.target_period === 'month' ? 'month' : 'week'
-
-/** ISO 周：周一开始，跨年按 ISO 8601（如 2027-01-01 属于 2026-W53） */
-export const isoWeekKey = (date: string | Dayjs): string => {
-  const value = typeof date === 'string' ? dayjs(date) : date
-  const target = new Date(Date.UTC(value.year(), value.month(), value.date()))
-  const dayNum = target.getUTCDay() || 7
-  target.setUTCDate(target.getUTCDate() + 4 - dayNum)
-  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1))
-  const week = Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-  return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
-}
 
 /** 周期区间：周 = 本周一~本周日；月 = 当月 1 日~月末 */
 export const periodRange = (habit: Pick<Habit, 'frequency' | 'target_period'>, date: string | Dayjs): HabitPeriodRange => {

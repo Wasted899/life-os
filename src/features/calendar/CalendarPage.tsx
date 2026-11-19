@@ -47,7 +47,8 @@ export default function CalendarPage() {
     if (nextView !== view) save(VIEW_PREF_KEY, nextView)
   }
 
-  const openBlock = (date: string) => navigate(`/time?date=${date}`)
+  const openBlock = (date: string, abnormal = false) =>
+    navigate(abnormal ? `/time?date=${date}&abnormal=1` : `/time?date=${date}`)
   const openTodo = (date: string) => navigate(`/todos?date=${date}`)
 
   return (

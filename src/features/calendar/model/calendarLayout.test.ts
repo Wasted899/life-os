@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { layoutDayBlocks, normalizeBlockRange } from './calendarLayout'
+import { layoutDayBlocks } from './calendarLayout'
+import { normalizeBlockRange } from '../../../core/timeRange'
 
 const block = (id: string, start: number, end: number) => ({ id, start, end })
 

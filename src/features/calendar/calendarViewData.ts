@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import type { TimeBlock, Todo } from '../../core/types'
+import { colorForCategory } from '../../core/categoryColor'
 import { QUADRANT_META } from '../todos/types'
 import { timelineTimeOf } from '../todos/hooks/useTodosViewData'
 import type { DayBucket } from './model/calendarIndex'
@@ -31,18 +32,6 @@ export interface TimedTodo {
   todo: Todo
   time: string
   minutes: number
-}
-
-const BLOCK_PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4']
-
-/** 时间块按分类名做稳定取色，同一分类在五视图里颜色一致 */
-export function blockColor(category: string): string {
-  const text = category || '未分类'
-  let hash = 0
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) % 100000
-  }
-  return BLOCK_PALETTE[hash % BLOCK_PALETTE.length]
 }
 
 const pad2 = (value: number): string => String(value).padStart(2, '0')
@@ -98,7 +87,7 @@ export function buildDayEntries(bucket: DayBucket): DayEntry[] {
       title: block.title,
       timeLabel: formatHourValue(block.start),
       minutes: Math.round(block.start * 60),
-      color: blockColor(block.category),
+      color: colorForCategory(block.category),
       completed: false,
     })
   })

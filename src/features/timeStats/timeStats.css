@@ -1,0 +1,800 @@
+/* 时间统计模块样式：全部限定在 .time-stats-page / .ts- 命名空间内。
+   CSS 变量放在 :root，抽屉 portal 到 body 后仍能继承。 */
+
+:root {
+  --ts-text: #1e293b;
+  --ts-muted: #94a3b8;
+  --ts-line: #e2e8f0;
+  --ts-surface: #f8fafc;
+  --ts-card-stroke: #ffffff;
+  --ts-danger: #ef4444;
+  --ts-other: #94a3b8;
+}
+
+.time-stats-page {
+  position: relative;
+}
+
+.ts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ts-segment {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--ts-surface);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.ts-segment button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ts-muted);
+  cursor: pointer;
+}
+
+.ts-segment button.is-active {
+  background: #fff;
+  color: var(--ts-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.ts-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ts-date-input {
+  width: auto;
+  min-width: 140px;
+  padding: 7px 10px;
+}
+
+.ts-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ts-health.is-dirty {
+  border-color: #fca5a5;
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.ts-period-label {
+  font-size: 13px;
+  color: var(--ts-muted);
+  margin-bottom: 14px;
+}
+
+.ts-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.ts-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.ts-stat {
+  background: var(--ts-surface);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-stat span {
+  font-size: 12px;
+  color: var(--ts-muted);
+}
+
+.ts-stat strong {
+  font-size: 20px;
+  color: var(--ts-text);
+}
+
+.ts-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .ts-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ts-chart {
+  background: var(--ts-surface);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.ts-detail {
+  min-width: 0;
+}
+
+/* ---------- 环形图 ---------- */
+
+.ts-donut {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+.ts-sector {
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  outline: none;
+}
+
+.ts-sector:focus-visible {
+  stroke: var(--primary, #3b82f6);
+  stroke-width: 2.5;
+}
+
+.ts-sector.is-static {
+  cursor: default;
+}
+
+.ts-donut-label {
+  font-size: 11px;
+  fill: var(--ts-muted);
+}
+
+.ts-donut-total {
+  font-size: 24px;
+  font-weight: 800;
+  fill: var(--ts-text);
+}
+
+.ts-donut-sub {
+  font-size: 11px;
+  fill: var(--ts-muted);
+}
+
+.ts-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+}
+
+.ts-legend-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 70px 56px 44px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ts-text);
+}
+
+.ts-legend-row:hover {
+  background: #fff;
+}
+
+.ts-legend-row.is-selected {
+  background: #eff6ff;
+}
+
+.ts-legend-row.is-static {
+  cursor: default;
+}
+
+.ts-legend-row:disabled {
+  opacity: 1;
+  color: var(--ts-text);
+}
+
+.ts-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ts-legend-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-legend-bar {
+  display: block;
+  height: 4px;
+  background: var(--ts-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ts-legend-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.ts-legend-hours {
+  text-align: right;
+  font-weight: 600;
+}
+
+.ts-legend-share {
+  text-align: right;
+  color: var(--ts-muted);
+  font-size: 12px;
+}
+
+/* ---------- 24h 副图 ---------- */
+
+.ts-clock-wrap {
+  margin-top: 18px;
+  border-top: 1px dashed var(--ts-line);
+  padding-top: 14px;
+}
+
+.ts-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ts-text);
+  margin-bottom: 6px;
+}
+
+.ts-clock {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.ts-tick {
+  stroke: var(--ts-line);
+  stroke-width: 1;
+}
+
+.ts-tick.is-major {
+  stroke-width: 2;
+}
+
+.ts-tick-label {
+  font-size: 11px;
+  fill: var(--ts-muted);
+}
+
+.ts-now-hand {
+  stroke: var(--ts-danger);
+  stroke-width: 2;
+}
+
+.ts-now-dot {
+  fill: var(--ts-danger);
+}
+
+.ts-clock-total {
+  font-size: 20px;
+  font-weight: 800;
+  fill: var(--ts-text);
+}
+
+.ts-clock-sub {
+  font-size: 11px;
+  fill: var(--ts-muted);
+}
+
+/* ---------- 记录明细 ---------- */
+
+.ts-mini {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.ts-danger-text {
+  color: var(--ts-danger);
+}
+
+.ts-records-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.ts-records-title {
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ts-records-count {
+  font-size: 12px;
+  color: var(--ts-muted);
+  font-weight: 400;
+}
+
+.ts-filter-chip {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ts-records-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ts-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ts-record {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--ts-surface);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.ts-record:hover {
+  border-color: var(--ts-line);
+}
+
+.ts-record.is-selected {
+  background: #eff6ff;
+}
+
+.ts-record.is-abnormal {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.ts-record-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ts-record-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ts-record-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ts-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-record-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.ts-record-source {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: #475569;
+  background: #e2e8f0;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.ts-record-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--ts-muted);
+  margin-top: 2px;
+}
+
+.ts-record-category {
+  color: #475569;
+}
+
+.ts-record-hours {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--ts-text);
+}
+
+.ts-record-hours.is-abnormal {
+  color: var(--ts-danger);
+}
+
+.ts-record-buttons {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ts-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ts-muted);
+}
+
+/* ---------- 表单 ---------- */
+
+.ts-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ts-muted);
+}
+
+.ts-field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.ts-field-row .ts-field {
+  flex: 1;
+}
+
+.ts-hint {
+  font-size: 12px;
+  color: var(--ts-muted);
+  line-height: 1.5;
+}
+
+.ts-form-error {
+  color: #b91c1c;
+  font-size: 13px;
+  background: #fef2f2;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+/* ---------- 数据体检抽屉 ---------- */
+
+.ts-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  z-index: 950;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ts-drawer {
+  width: min(680px, 100%);
+  height: 100%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 30px rgba(15, 23, 42, 0.18);
+}
+
+.ts-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ts-line);
+}
+
+.ts-drawer-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ts-text);
+}
+
+.ts-drawer-sub {
+  font-size: 12px;
+  color: var(--ts-muted);
+  margin-top: 4px;
+}
+
+.ts-drawer-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--ts-line);
+}
+
+.ts-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--ts-surface);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.ts-tabs button {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ts-muted);
+  cursor: pointer;
+}
+
+.ts-tabs button.is-active {
+  background: #fff;
+  color: var(--ts-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.ts-drawer-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ts-reason-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+}
+
+.ts-reason-chips button {
+  border: 1px solid var(--ts-line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--ts-muted);
+  cursor: pointer;
+}
+
+.ts-reason-chips button.is-active {
+  border-color: var(--primary, #3b82f6);
+  color: var(--primary, #3b82f6);
+  background: #eff6ff;
+}
+
+.ts-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+  overscroll-behavior: contain;
+}
+
+.ts-drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--ts-line);
+}
+
+.ts-ab-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--ts-line);
+  border-radius: 8px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+
+.ts-ab-row.is-selected {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.ts-ab-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ts-ab-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ts-text);
+}
+
+.ts-ab-date {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ts-muted);
+}
+
+.ts-ab-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ts-muted);
+  margin-top: 4px;
+}
+
+.ts-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.ts-ab-reasons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.ts-reason-tag {
+  font-size: 11px;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.ts-ab-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ts-overlap-hint {
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 7px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+/* ---------- 分类管理 ---------- */
+
+.ts-cat-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ts-color-input {
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--ts-line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ts-cat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ts-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ts-cat-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ts-cat-count {
+  width: 52px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--ts-muted);
+  white-space: nowrap;
+}
+
+/* ---------- Toast ---------- */
+
+.ts-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 1100;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.24);
+}
+
+@media (max-width: 640px) {
+  .ts-legend-row {
+    grid-template-columns: 12px minmax(0, 1fr) 56px 44px;
+  }
+
+  .ts-legend-bar {
+    display: none;
+  }
+
+  .ts-record-buttons {
+    display: none;
+  }
+
+  .ts-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

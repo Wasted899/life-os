@@ -1,10 +1,10 @@
 import {describe,expect,it} from 'vitest'
 import type {Habit} from '../../core/types'
+import { isoWeekKey } from '../../core/periodKey'
 import {
   buildHabitTodoPlan,
   effectiveCustomDays,
   habitDue,
-  isoWeekKey,
   maxTargetFor,
   periodRange,
   progressOf,

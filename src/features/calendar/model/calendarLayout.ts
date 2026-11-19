@@ -1,23 +1,16 @@
 import type { TimeBlock } from '../../../core/types'
+import { normalizeBlockRange } from '../../../core/timeRange'
+import type { NormalizedRange } from '../../../core/timeRange'
 
 /**
  * 日历时间轴纯逻辑：
- * 1. normalizeBlockRange —— 把时间块的 start/end 收进 [0, 24]，并标记脏数据（A3）
+ * 1. normalizeBlockRange —— 已上移到 core/timeRange（与时间统计共用）
  * 2. layoutDayBlocks —— 扫描线分组 + 组内 lane 分配，输出可直接绝对定位的位置数据
  *
  * 只做计算，不关心像素以外的渲染细节；不依赖 React。
  */
 
 /** 已知异常的最小可见高度由渲染层用 minHeight 兜底，这里只输出真实几何 */
-
-export interface NormalizedRange {
-  /** 0..24 */
-  start: number
-  /** start..24，且恒不小于 start */
-  end: number
-  /** 原始数据越界 / 倒挂 / 非法时置 true，渲染层据此显示异常标记 */
-  abnormal: boolean
-}
 
 export interface PlacedBlock<T> {
   block: T
@@ -37,30 +30,6 @@ export interface PlacedBlock<T> {
 }
 
 type BlockLike = Pick<TimeBlock, 'start' | 'end'>
-
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, value))
-
-/**
- * 时间块范围归一（A3：不改数据，只在渲染层收口）：
- * - start = clamp(start, 0, 24)
- * - end   = clamp(end, start, 24)
- * - 原始 end > 24、end <= start、start 越界、非数字 → abnormal = true
- */
-export function normalizeBlockRange(block: BlockLike): NormalizedRange {
-  const rawStart = Number(block.start)
-  const rawEnd = Number(block.end)
-  const start = Number.isFinite(rawStart) ? clamp(rawStart, 0, 24) : 0
-  const end = Number.isFinite(rawEnd) ? clamp(rawEnd, start, 24) : start
-  const abnormal =
-    !Number.isFinite(rawStart) ||
-    !Number.isFinite(rawEnd) ||
-    rawStart < 0 ||
-    rawStart > 24 ||
-    rawEnd > 24 ||
-    rawEnd <= rawStart
-  return { start, end, abnormal }
-}
 
 interface Candidate<T> extends NormalizedRange {
   block: T

@@ -1,6 +1,7 @@
 import type { DayBucket } from '../model/calendarIndex'
 import { layoutDayBlocks } from '../model/calendarLayout'
-import { blockColor, blockTimeLabel, formatHourValue, timedTodos } from '../calendarViewData'
+import { colorForCategory } from '../../../core/categoryColor'
+import { blockTimeLabel, formatHourValue, timedTodos } from '../calendarViewData'
 
 const HOURS = 24
 
@@ -10,7 +11,7 @@ interface DayColumnProps {
   hourHeight: number
   isToday: boolean
   nowMinutes: number | null
-  onOpenBlock: (date: string) => void
+  onOpenBlock: (date: string, abnormal?: boolean) => void
   onOpenTodo: (date: string) => void
 }
 
@@ -46,8 +47,8 @@ export default function DayColumn({
             ...(item.abnormal
               ? {}
               : {
-                  background: `${blockColor(item.block.category)}22`,
-                  borderLeft: `3px solid ${blockColor(item.block.category)}`,
+                  background: `${colorForCategory(item.block.category)}22`,
+                  borderLeft: `3px solid ${colorForCategory(item.block.category)}`,
                 }),
           }}
           title={
@@ -55,7 +56,7 @@ export default function DayColumn({
               ? `${item.block.title}（${blockTimeLabel(item.block)}，时间数据异常，点击到时间统计修正）`
               : `${item.block.title}（${blockTimeLabel(item.block)}）`
           }
-          onClick={() => onOpenBlock(date)}
+          onClick={() => onOpenBlock(date, item.abnormal)}
         >
           <span className="cal-block-time">
             {formatHourValue(item.block.start)}–{formatHourValue(item.block.end)}

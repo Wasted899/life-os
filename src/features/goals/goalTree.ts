@@ -15,7 +15,7 @@
  */
 import dayjs, { type Dayjs } from 'dayjs'
 import type { Goal, GoalLevel } from '../../core/types'
-import { isoWeekKey } from '../habits/habitSchedule'
+import { isoWeekKey } from '../../core/periodKey'
 
 export const GOAL_LEVELS: readonly GoalLevel[] = ['year', 'month', 'week', 'day']
 
