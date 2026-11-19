@@ -25,6 +25,7 @@ import { MODULE_ORDER, normalizeDisabledModules } from './modules'
 import { normalizeReviewKey, reviewCreatedAt } from './reviewKey'
 import { sanitizeAll, sanitizeMemoItems } from '../lib/sanitize'
 import { sanitizeExternalUrl } from '../lib/externalUrl'
+import { normalizeTheme } from './theme'
 import {
   isGoalLevel,
   legacyTypeOfLevel,
@@ -1248,26 +1249,6 @@ export function dedupeReviews(reviews: ReviewEntry[]): ReviewEntry[] {
   return Array.from(map.values())
 }
 
-
-function normalizeTheme(item: unknown): Theme | null {
-  if (!isPlainObject(item)) return null
-  const id = asText(item.id)
-  const name = asText(item.name)
-  if (!id || !name) return null
-  const theme: Theme = {
-    id,
-    name,
-    primary: asText(item.primary) || '#2563eb',
-    sidebar: asText(item.sidebar) || '#ffffff',
-    custom: item.custom !== false,
-  }
-  if (hasValue(item.bg)) theme.bg = asText(item.bg)
-  if (hasValue(item.bgImage)) theme.bgImage = asText(item.bgImage)
-  if (hasValue(item.overlay)) theme.overlay = asNum(item.overlay, 0)
-  if (hasValue(item.blur)) theme.blur = asNum(item.blur, 0)
-  if (hasValue(item.iconSet)) theme.iconSet = asText(item.iconSet)
-  return theme
-}
 
 function normalizeQuote(item: unknown): Quote | null {
   if (!isPlainObject(item)) return null

@@ -1,5 +1,131 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>个人规划助手</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"/></head>
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="theme-color" content="#f0f4f8"/>
+<title>个人规划助手</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<script>
+/* 首屏同步注入主题变量：必须在 CSS 之后、React 之前执行，避免刷新闪白/闪蓝。
+   映射规则与 src/features/theme/model/themeSchema.ts 保持一致（该文件是唯一真源）。 */
+(function () {
+  try {
+    var read = function (key) {
+      try {
+        var raw = localStorage.getItem('planner:' + key);
+        if (raw != null) {
+          var value = JSON.parse(raw);
+          return value && typeof value === 'object' && 'v' in value && 'data' in value ? value.data : value;
+        }
+        var legacy = localStorage.getItem(key);
+        return legacy == null ? undefined : JSON.parse(legacy);
+      } catch (error) {
+        return undefined;
+      }
+    };
+    var presets = {
+      blue: { primary: '#2563eb', sidebar: '#1e3a5f', bg: '#f0f4f8', overlay: 0.88, blur: 12 },
+      green: { primary: '#047857', sidebar: '#065f46', bg: '#f0fdf4', overlay: 0.88, blur: 12 },
+      purple: { primary: '#7c3aed', sidebar: '#4c1d95', bg: '#faf5ff', overlay: 0.88, blur: 12 },
+      dark: { primary: '#6366f1', sidebar: '#0f172a', bg: '#1e293b', overlay: 0.85, blur: 16, vars: { surface: '#1e293b', cardAlpha: 0.92 } },
+      rhodes: {
+        primary: '#2f6f83', sidebar: '#12181f', bg: '#eef2f4', overlay: 0.9, blur: 14,
+        vars: { surface: '#f7fafb', cardAlpha: 0.9, texture: 'both', accent: '#57c7d4', cut: 10, monoNumbers: true, motion: 'calm' }
+      }
+    };
+    var id = read('p_theme');
+    var theme = typeof id === 'string' && presets[id] ? presets[id] : null;
+    if (!theme) {
+      var list = read('p_themes');
+      if (Array.isArray(list)) {
+        for (var i = 0; i < list.length; i += 1) {
+          if (list[i] && list[i].id === id) { theme = list[i]; break; }
+        }
+      }
+    }
+    if (!theme) theme = presets.blue;
+    if (typeof theme.bgImage === 'string' && !/^(data:image\/(png|jpe?g|webp|gif);base64,|https?:\/\/)/i.test(theme.bgImage)) {
+      theme.bgImage = null;
+    }
+
+    var number = function (value, fallback) {
+      var num = Number(value);
+      return isFinite(num) ? num : fallback;
+    };
+    var clamp = function (value, min, max) { return Math.min(max, Math.max(min, value)); };
+    var rgb = function (color) {
+      var match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color || '');
+      if (!match) return null;
+      var hex = match[1].length === 3 ? match[1].replace(/./g, function (char) { return char + char; }) : match[1];
+      return parseInt(hex.slice(0, 2), 16) + ',' + parseInt(hex.slice(2, 4), 16) + ',' + parseInt(hex.slice(4, 6), 16);
+    };
+    var luminance = function (color) {
+      var parts = rgb(color);
+      if (!parts) return null;
+      var values = parts.split(',');
+      return (0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2]) / 255;
+    };
+
+    var vars = theme.vars || {};
+    var bg = theme.bg || '#f0f4f8';
+    var overlay = clamp(number(theme.overlay, 0.88), 0.3, 1);
+    var blur = Math.round(clamp(number(theme.blur, 12), 0, 24));
+    var hasImage = !!theme.bgImage;
+    var cardAlpha = clamp(number(vars.cardAlpha, overlay), 0.5, 1);
+    if (hasImage) cardAlpha = Math.max(0.72, cardAlpha);
+    var sidebarOverlay = clamp(number(vars.sidebarOverlay, overlay), 0.3, 1);
+    var texture = vars.texture || 'none';
+    var gridOn = texture === 'grid' || texture === 'both';
+    var noiseOn = texture === 'noise' || texture === 'both';
+    var tone = luminance(bg);
+    var lightText = vars.textTone ? vars.textTone === 'light' : tone !== null && tone < 0.45;
+    var calm = vars.motion === 'calm';
+
+    var root = document.documentElement.style;
+    var set = function (name, value) { root.setProperty(name, String(value)); };
+
+    set('--primary', theme.primary || '#2563eb');
+    set('--sidebar-bg', theme.sidebar || '#1e3a5f');
+    set('--overlay', overlay);
+    set('--blur', blur + 'px');
+    set('--radius', '12px');
+    set('--bg-image', hasImage ? 'url(' + theme.bgImage + ')' : 'none');
+    set('--bg', bg);
+    set('--bg-rgb', rgb(bg) || '240,244,248');
+    set('--sidebar-rgb', rgb(theme.sidebar) || '30,58,95');
+    set('--surface', vars.surface || '#ffffff');
+    set('--surface-rgb', rgb(vars.surface || '#ffffff') || '255,255,255');
+    set('--pattern-rgb', lightText ? '255,255,255' : '15,23,42');
+    set('--accent', vars.accent || theme.primary || '#2563eb');
+    set('--card-alpha', cardAlpha);
+    set('--card-blur', Math.round(blur * 0.5) + 'px');
+    set('--sidebar-overlay', sidebarOverlay);
+    set('--sidebar-blur', blur + 'px');
+    set('--texture', texture);
+    set('--grid-size', '24px');
+    set('--grid-alpha', gridOn ? '0.06' : '0');
+    set('--noise-alpha', noiseOn ? '0.035' : '0');
+    set('--cut', Math.round(clamp(number(vars.cut, 0), 0, 24)) + 'px');
+    set('--mono-numbers', vars.monoNumbers ? '1' : '0');
+    set('--motion-fast', calm ? '180ms' : '120ms');
+    set('--motion-base', calm ? '280ms' : '180ms');
+    set('--motion-ease', calm ? 'cubic-bezier(.4,0,.2,1)' : 'cubic-bezier(.2,.8,.2,1)');
+    set('--grad-start', theme.primary || '#2563eb');
+    set('--grad-end', vars.accent || theme.sidebar || '#1e3a5f');
+    set('--hairline', lightText ? 'rgba(255,255,255,.14)' : 'rgba(15,23,42,.09)');
+    set('--text-main', lightText ? '#e6edf3' : '#1e293b');
+    set('--text-muted', lightText ? 'rgba(230,237,243,.72)' : '#64748b');
+    set('--text-faint', lightText ? 'rgba(230,237,243,.5)' : '#94a3b8');
+    document.documentElement.setAttribute('data-mono', vars.monoNumbers ? '1' : '0');
+
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', bg);
+  } catch (error) {
+    // 主题读取失败时保持 :root 默认值，不影响首屏
+  }
+})();
+</script>
+</head>
 <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
 </html>

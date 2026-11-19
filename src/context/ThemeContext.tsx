@@ -1,23 +1,125 @@
-import {createContext,useContext,useEffect,useState,ReactNode} from 'react'
-import {load,save} from '../core/storage'
-import type {Theme} from '../core/types'
-export type {Theme}
-const presets:Theme[]=[{id:'blue',name:'深邃蓝',primary:'#2563eb',sidebar:'#1e3a5f',bg:'#f0f4f8',overlay:0.88,blur:12},{id:'green',name:'清新绿',primary:'#10b981',sidebar:'#065f46',bg:'#f0fdf4',overlay:0.88,blur:12},{id:'purple',name:'优雅紫',primary:'#8b5cf6',sidebar:'#4c1d95',bg:'#faf5ff',overlay:0.88,blur:12},{id:'dark',name:'暗夜黑',primary:'#6366f1',sidebar:'#0f172a',bg:'#1e293b',overlay:0.85,blur:16}]
-const C=createContext<{theme:Theme;themes:Theme[];setTheme:(id:string)=>void;addTheme:(t:Theme)=>void;deleteTheme:(id:string)=>void}>({theme:presets[0],themes:presets,setTheme:()=>{},addTheme:()=>{},deleteTheme:()=>{}})
-export function ThemeProvider({children}:{children:ReactNode}){
-  const[themes,setThemes]=useState<Theme[]>(()=>[...presets,...load<Theme[]>('p_themes',[])])
-  const[tid,setTid]=useState(()=>load('p_theme','blue'))
-  const theme=themes.find(t=>t.id===tid)||themes[0]
-  useEffect(()=>{
-    document.documentElement.style.setProperty('--primary',theme.primary)
-    document.documentElement.style.setProperty('--sidebar-bg',theme.sidebar)
-    document.documentElement.style.setProperty('--overlay',String(theme.overlay??0.88))
-    document.documentElement.style.setProperty('--blur',String(theme.blur??12)+'px')
-    if(theme.bgImage){document.documentElement.style.setProperty('--bg-image',`url(${theme.bgImage})`);document.body.style.backgroundColor='transparent'}else{document.documentElement.style.setProperty('--bg-image','none');document.body.style.backgroundColor=theme.bg||'#f0f4f8'}
-  },[theme])
-  const setTheme=(id:string)=>{setTid(id);save('p_theme',id)}
-  const addTheme=(t:Theme)=>{const nt=[...themes,t];setThemes(nt);save('p_themes',nt.filter(x=>x.custom));setTheme(t.id)}
-  const deleteTheme=(id:string)=>{const nt=themes.filter(t=>t.id!==id);setThemes(nt);save('p_themes',nt.filter(x=>x.custom));if(tid===id)setTheme('blue')}
-  return<C.Provider value={{theme,themes,setTheme,addTheme,deleteTheme}}>{children}</C.Provider>
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import type { Theme } from '../core/types'
+import { DEFAULT_THEME_ID } from '../core/theme'
+import { applyTheme } from '../features/theme/applyTheme'
+import { BUILTIN_THEMES } from '../features/theme/builtinThemes'
+import {
+  persistActiveThemeId,
+  persistThemeSet,
+  readActiveThemeId,
+  readAllThemes,
+} from '../features/theme/model/themeStorage'
+import type { PersistResult } from '../features/theme/model/themeStorage'
+
+export type { Theme }
+
+interface ThemeContextValue {
+  theme: Theme
+  themes: Theme[]
+  setTheme: (id: string) => void
+  /** 新增自定义主题并切换；写失败时内存状态不变 */
+  addTheme: (theme: Theme) => PersistResult
+  /** 覆盖已有自定义主题（重命名 / 换配色）；写失败时内存状态不变 */
+  updateTheme: (theme: Theme) => PersistResult
+  renameTheme: (id: string, name: string) => PersistResult
+  deleteTheme: (id: string) => PersistResult
 }
-export const useTheme=()=>useContext(C)
+
+const BUILTIN_IDS = new Set(BUILTIN_THEMES.map(theme => theme.id))
+
+const previewTheme = BUILTIN_THEMES[0]
+
+const C = createContext<ThemeContextValue>({
+  theme: previewTheme,
+  themes: [...BUILTIN_THEMES],
+  setTheme: () => {},
+  addTheme: () => ({ ok: false, reason: '主题上下文未初始化' }),
+  updateTheme: () => ({ ok: false, reason: '主题上下文未初始化' }),
+  renameTheme: () => ({ ok: false, reason: '主题上下文未初始化' }),
+  deleteTheme: () => ({ ok: false, reason: '主题上下文未初始化' }),
+})
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [themes, setThemes] = useState<Theme[]>(() => readAllThemes())
+  const [tid, setTid] = useState<string>(() => readActiveThemeId())
+
+  const theme = themes.find(item => item.id === tid) || themes[0] || previewTheme
+
+  // useLayoutEffect：在任何一次绘制之前写变量，和 index.html 首屏脚本衔接，避免闪烁
+  useLayoutEffect(() => {
+    applyTheme(theme)
+  }, [theme])
+
+  const setTheme = useCallback((id: string) => {
+    setTid(current => (current === id ? current : id))
+    persistActiveThemeId(id)
+  }, [])
+
+  /** 统一先落盘再更新内存：写失败时状态不变，界面不会出现「看起来保存了其实丢了」 */
+  const commit = useCallback((next: Theme[]): PersistResult => {
+    const result = persistThemeSet(next)
+    if (result.ok) setThemes(next)
+    return result
+  }, [])
+
+  const addTheme = useCallback(
+    (themeToAdd: Theme): PersistResult => {
+      const next = [...themes.filter(item => item.id !== themeToAdd.id), themeToAdd]
+      const result = commit(next)
+      if (result.ok) {
+        setTid(themeToAdd.id)
+        persistActiveThemeId(themeToAdd.id)
+      }
+      return result
+    },
+    [commit, themes],
+  )
+
+  const updateTheme = useCallback(
+    (nextTheme: Theme): PersistResult => {
+      if (BUILTIN_IDS.has(nextTheme.id)) {
+        return { ok: false, reason: '预设主题不可修改' }
+      }
+      const next = themes.map(item => (item.id === nextTheme.id ? nextTheme : item))
+      return commit(next)
+    },
+    [commit, themes],
+  )
+
+  const renameTheme = useCallback(
+    (id: string, name: string): PersistResult => {
+      const target = themes.find(item => item.id === id)
+      if (!target) return { ok: false, reason: '主题不存在' }
+      if (BUILTIN_IDS.has(id)) return { ok: false, reason: '预设主题不可重命名' }
+      const trimmed = name.trim()
+      if (!trimmed) return { ok: false, reason: '主题名称不能为空' }
+      return updateTheme({ ...target, name: trimmed, updatedAt: new Date().toISOString() })
+    },
+    [themes, updateTheme],
+  )
+
+  const deleteTheme = useCallback(
+    (id: string): PersistResult => {
+      if (BUILTIN_IDS.has(id)) return { ok: false, reason: '预设主题不可删除' }
+      const target = themes.find(item => item.id === id)
+      if (!target) return { ok: false, reason: '主题不存在' }
+      const result = commit(themes.filter(item => item.id !== id))
+      if (result.ok && tid === id) {
+        setTid(DEFAULT_THEME_ID)
+        persistActiveThemeId(DEFAULT_THEME_ID)
+      }
+      return result
+    },
+    [commit, themes, tid],
+  )
+
+  const value = useMemo(
+    () => ({ theme, themes, setTheme, addTheme, updateTheme, renameTheme, deleteTheme }),
+    [theme, themes, setTheme, addTheme, updateTheme, renameTheme, deleteTheme],
+  )
+
+  return <C.Provider value={value}>{children}</C.Provider>
+}
+
+export const useTheme = () => useContext(C)

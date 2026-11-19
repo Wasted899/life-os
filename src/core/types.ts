@@ -284,6 +284,19 @@ export interface ReviewEntry {
 }
 
 /** 15. 主题 */
+/** M3-4 主题质感参数：全部可选，缺省时走 :root 默认值 */
+export interface ThemeVars {
+  surface?: string
+  cardAlpha?: number
+  sidebarOverlay?: number
+  texture?: 'none' | 'grid' | 'noise' | 'both'
+  accent?: string
+  cut?: number
+  monoNumbers?: boolean
+  motion?: 'snappy' | 'calm'
+  textTone?: 'dark' | 'light'
+}
+
 export interface Theme {
   id: string
   name: string
@@ -296,6 +309,10 @@ export interface Theme {
   custom?: boolean
   /** 批次 0 预留：主题配套图标集（规格 N14，可选） */
   iconSet?: string
+  /** M3-4 扩展：明日方舟质感参数 */
+  vars?: ThemeVars
+  createdAt?: string
+  updatedAt?: string
 }
 
 /** 16. 用户资料 */
