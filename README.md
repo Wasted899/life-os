@@ -70,6 +70,10 @@ npm run build       # 类型检查 + 生产构建，产物在 dist/
 npm run preview     # 本地预览生产构建
 ```
 
+### 开发与测试
+
+人工回归清单：[M1 全量回归](docs/M1-TESTING.md) · [M2 全量回归](docs/M2-TESTING.md)。自动化校验一行：`npx tsc --noEmit; npm test`（PowerShell 用 `;` 连接，bash 用 `&&`）。
+
 ## 目录结构
 
 ```text
