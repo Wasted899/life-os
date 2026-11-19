@@ -30,7 +30,7 @@
       green: { primary: '#047857', sidebar: '#065f46', bg: '#f0fdf4', overlay: 0.88, blur: 12 },
       purple: { primary: '#7c3aed', sidebar: '#4c1d95', bg: '#faf5ff', overlay: 0.88, blur: 12 },
       dark: { primary: '#6366f1', sidebar: '#0f172a', bg: '#1e293b', overlay: 0.85, blur: 16, vars: { surface: '#1e293b', cardAlpha: 0.92 } },
-      eridu: {
+      neon: {
         primary: '#FDE047', sidebar: '#0B0B0F', bg: '#101014', overlay: 0.92, blur: 10,
         vars: {
           surface: '#1A1A21', cardAlpha: 0.94, sidebarOverlay: 0.96, texture: 'stripes', accent: '#22D3EE',
@@ -39,6 +39,9 @@
       }
     };
     var id = read('p_theme');
+    /* 历史预设 id 迁移，与 themeStorage 的 LEGACY_PRESET_IDS 保持一致 */
+    var aliases = { eridu: 'neon' };
+    if (typeof id === 'string' && aliases[id]) id = aliases[id];
     var theme = typeof id === 'string' && presets[id] ? presets[id] : null;
     if (!theme) {
       var list = read('p_themes');
@@ -87,8 +90,9 @@
     var blur = Math.round(clamp(number(theme.blur, 12), 0, 24));
     var hasImage = !!theme.bgImage;
     var cardAlpha = clamp(number(vars.cardAlpha, overlay), 0.5, 1);
-    if (hasImage) cardAlpha = Math.max(0.72, cardAlpha);
-    var sidebarOverlay = clamp(number(vars.sidebarOverlay, overlay), 0.3, 1);
+    if (hasImage) cardAlpha = Math.max(0.62, cardAlpha);
+    var storedSidebarOverlay = clamp(number(vars.sidebarOverlay, overlay), 0.3, 1);
+    var sidebarOverlay = hasImage ? clamp(storedSidebarOverlay, 0.34, 0.58) : storedSidebarOverlay;
     var texture = vars.texture || 'none';
     var gridOn = texture === 'grid' || texture === 'both';
     var noiseOn = texture === 'noise' || texture === 'both';
@@ -121,6 +125,7 @@
     set('--bg', bg);
     set('--bg-rgb', rgb(bg) || '240,244,248');
     set('--sidebar-rgb', rgb(theme.sidebar) || '30,58,95');
+    set('--sidebar-glass-rgb', hasImage ? '8,8,10' : (rgb(theme.sidebar) || '30,58,95'));
     set('--surface', surface);
     set('--surface-rgb', rgb(surface) || '255,255,255');
     set('--pattern-rgb', lightText ? '255,255,255' : '15,23,42');
@@ -128,9 +133,9 @@
     set('--primary-ink', primaryInk);
     set('--accent', vars.accent || theme.primary || '#2563eb');
     set('--card-alpha', cardAlpha);
-    set('--card-blur', Math.round(blur * 0.5) + 'px');
+    set('--card-blur', (hasImage ? Math.max(10, Math.round(blur * 0.75)) : Math.round(blur * 0.5)) + 'px');
     set('--sidebar-overlay', sidebarOverlay);
-    set('--sidebar-blur', blur + 'px');
+    set('--sidebar-blur', (hasImage ? Math.max(14, blur) : blur) + 'px');
     set('--texture', texture);
     set('--grid-size', '24px');
     set('--grid-alpha', gridOn ? '0.06' : '0');
@@ -144,6 +149,13 @@
     set('--card-edge', geometric ? '0px' : '1px');
     set('--accent-block', geometric ? '4px' : '2px');
     set('--field-border', geometric ? '2px' : '1px');
+    set('--radius-card', geometric ? '2px' : '14px');
+    set('--radius-control', geometric ? '2px' : '10px');
+    set('--radius-btn', geometric ? '2px' : '8px');
+    set('--shadow-card', geometric ? 'none' : '0 1px 2px rgba(15,23,42,.05)');
+    set('--card-pad', geometric ? '20px' : '24px');
+    set('--title-size', geometric ? '20px' : '18px');
+    set('--text-strong', lightText ? '#ffffff' : '#0f172a');
     set('--font-body', systemFont);
     set('--font-display', impact ? impactFont : systemFont);
     set('--glitch-shadow', vars.glitch ? '2px 0 rgba(34,211,238,.65), -2px 0 rgba(244,114,182,.65)' : 'none');

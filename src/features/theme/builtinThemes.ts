@@ -17,8 +17,8 @@ export const BUILTIN_THEMES: readonly Theme[] = [
     vars: { surface: '#1e293b', cardAlpha: 0.92 },
   },
   {
-    id: 'eridu',
-    name: '新艾利都',
+    id: 'neon',
+    name: '霓虹黑',
     primary: '#FDE047',
     sidebar: '#0B0B0F',
     bg: '#101014',

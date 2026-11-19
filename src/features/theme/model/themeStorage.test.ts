@@ -4,12 +4,15 @@ import type { Theme } from '../../../core/types'
 import { BUILTIN_THEMES } from '../builtinThemes'
 import {
   ACTIVE_THEME_KEY,
+  HIDDEN_THEMES_KEY,
   THEMES_KEY,
   persistActiveThemeId,
+  persistHiddenThemeIds,
   persistThemeSet,
   readActiveThemeId,
   readAllThemes,
   readCustomThemes,
+  readHiddenThemeIds,
 } from './themeStorage'
 import { THEME_IMAGE_MAX_CHARS } from './imagePipeline'
 
@@ -66,6 +69,41 @@ describe('readAllThemes', () => {
     const all = readAllThemes()
     expect(all).toHaveLength(BUILTIN_THEMES.length + 1)
     expect(all[all.length - 1]?.id).toBe('c-1')
+  })
+})
+
+describe('hidden presets', () => {
+  it('只记录真实存在的内置预设 id，脏数据丢弃', () => {
+    expect(persistHiddenThemeIds(['blue', 'nope', 'blue'])).toBe(true)
+    expect(raw(HIDDEN_THEMES_KEY)).toEqual(['blue'])
+    expect(readHiddenThemeIds()).toEqual(['blue'])
+  })
+
+  it('隐藏的预设不出现在可见列表，自定义主题不受影响', () => {
+    window.localStorage.setItem(
+      `planner:${THEMES_KEY}`,
+      JSON.stringify({ v: 1, data: [custom('c-1')] }),
+    )
+    persistHiddenThemeIds(['dark'])
+    const all = readAllThemes()
+    expect(all.map(item => item.id)).not.toContain('dark')
+    expect(all.map(item => item.id)).toContain('c-1')
+  })
+
+  it('删除当前主题后回落默认主题', () => {
+    persistActiveThemeId('dark')
+    persistHiddenThemeIds(['dark'])
+    expect(readActiveThemeId()).toBe('blue')
+  })
+
+  it('默认主题也被隐藏时退回第一个可用主题', () => {
+    persistHiddenThemeIds(['blue'])
+    expect(readActiveThemeId()).toBe('green')
+  })
+
+  it('旧预设 id 迁移到现 id', () => {
+    persistActiveThemeId('eridu')
+    expect(readActiveThemeId()).toBe('neon')
   })
 })
 

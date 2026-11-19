@@ -18,8 +18,25 @@ import {
 
 export const THEMES_KEY = 'p_themes'
 export const ACTIVE_THEME_KEY = 'p_theme'
+/** 被用户删除（隐藏）的内置预设 id；预设本体仍在代码里，靠这份名单决定是否展示 */
+export const HIDDEN_THEMES_KEY = 'p_hidden_themes'
 
 const BUILTIN_IDS = new Set(BUILTIN_THEMES.map(theme => theme.id))
+
+/** 历史预设 id → 现 id（改过名的预设不能把老用户的当前主题打回默认） */
+const LEGACY_PRESET_IDS: Record<string, string> = { eridu: 'neon' }
+
+/** 读取被隐藏的预设 id：只认当前仍存在的预设，脏数据直接丢弃 */
+export function readHiddenThemeIds(): string[] {
+  const raw = load<unknown>(HIDDEN_THEMES_KEY, [])
+  if (!Array.isArray(raw)) return []
+  const ids = raw.filter((id): id is string => typeof id === 'string' && BUILTIN_IDS.has(id))
+  return Array.from(new Set(ids))
+}
+
+export function persistHiddenThemeIds(ids: readonly string[]): boolean {
+  return save(HIDDEN_THEMES_KEY, Array.from(new Set(ids.filter(id => BUILTIN_IDS.has(id)))))
+}
 
 /** 读取自定义主题；坏数据逐条丢弃，id 与预设冲突的直接跳过（预设不可被覆盖） */
 export function readCustomThemes(): Theme[] {
@@ -38,14 +55,18 @@ export function readCustomThemes(): Theme[] {
 }
 
 export function readAllThemes(): Theme[] {
-  return [...BUILTIN_THEMES, ...readCustomThemes()]
+  const hidden = new Set(readHiddenThemeIds())
+  return [...BUILTIN_THEMES.filter(theme => !hidden.has(theme.id)), ...readCustomThemes()]
 }
 
-/** 当前主题 id；失效（主题已删）时回落默认预设 */
+/** 当前主题 id；已删除/已隐藏/非法 id 时回落默认预设（默认也被隐藏则取第一个可用主题） */
 export function readActiveThemeId(): string {
   const stored = load<unknown>(ACTIVE_THEME_KEY, DEFAULT_THEME_ID)
-  const id = typeof stored === 'string' ? stored : ''
-  return readAllThemes().some(theme => theme.id === id) ? id : DEFAULT_THEME_ID
+  const rawId = typeof stored === 'string' ? stored : ''
+  const id = LEGACY_PRESET_IDS[rawId] ?? rawId
+  const all = readAllThemes()
+  if (all.some(theme => theme.id === id)) return id
+  return all.some(theme => theme.id === DEFAULT_THEME_ID) ? DEFAULT_THEME_ID : (all[0]?.id ?? DEFAULT_THEME_ID)
 }
 
 export interface PersistResult {

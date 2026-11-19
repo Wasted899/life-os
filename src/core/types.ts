@@ -289,7 +289,7 @@ export interface ThemeVars {
   surface?: string
   cardAlpha?: number
   sidebarOverlay?: number
-  /** stripes = 绝区零式倾斜斑马线 */
+  /** stripes = 倾斜斑马线 */
   texture?: 'none' | 'grid' | 'noise' | 'both' | 'stripes'
   accent?: string
   cut?: number
@@ -298,7 +298,7 @@ export interface ThemeVars {
   textTone?: 'dark' | 'light'
   /** 标题字体：impact = Impact / Arial Black 粗犷无衬线 */
   heading?: 'system' | 'impact'
-  /** 大标题 glitch 故障阴影（绝区零风格） */
+  /** 大标题 glitch 故障阴影（高对比主题） */
   glitch?: boolean
 }
 

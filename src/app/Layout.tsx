@@ -1,5 +1,5 @@
 import {useState,useRef,useEffect,ReactNode} from 'react'
-import {NavLink} from 'react-router-dom'
+import {NavLink,useLocation} from 'react-router-dom'
 import {useTheme} from '../context/ThemeContext'
 import {useAuth} from '../context/AuthContext'
 import dayjs from 'dayjs'
@@ -16,18 +16,24 @@ export default function Layout({children}:{children:ReactNode}){
   const[avatar,setAvatar]=useState(()=>{try{return localStorage.getItem('p_avatar')||''}catch{return''}})
   const fileRef=useRef<HTMLInputElement>(null)
   const menuRef=useRef<HTMLDivElement>(null)
+  const location=useLocation()
+  const[navOpen,setNavOpen]=useState(false)
+  useEffect(()=>{setNavOpen(false)},[location.pathname])
+  useEffect(()=>{if(!navOpen)return;const h=(e:KeyboardEvent)=>{if(e.key==='Escape')setNavOpen(false)};document.addEventListener('keydown',h);return()=>document.removeEventListener('keydown',h)},[navOpen])
   useEffect(()=>{const h=(e:MouseEvent)=>{if(menuRef.current&&!menuRef.current.contains(e.target as Node))setUm(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[])
   const ha=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{const d=r.result as string;setAvatar(d);try{localStorage.setItem('p_avatar',d)}catch{}};r.readAsDataURL(f)}
   const cn=()=>{const n=prompt('输入昵称',nick);if(n){setNick(n);try{localStorage.setItem('p_nick',n)}catch{}}}
   return(
     <div className="app-layout">
-      <aside className="sidebar">
+      <aside id="app-nav" className={`sidebar${navOpen?' sidebar-open':''}`}>
         <div className="sidebar-brand">📋 规划助手</div>
-        {navGroups.map(g=>(<div key={g.id}><div className="sidebar-group-title">{g.title}</div>{g.items.map(i=>(<NavLink key={i.to} to={i.to} className="sidebar-item" end={i.to==='/'}><span>{i.icon}</span><span>{i.label}</span></NavLink>))}</div>))}
+        {navGroups.map(g=>(<div key={g.id}><div className="sidebar-group-title">{g.title}</div>{g.items.map(i=>(<NavLink key={i.to} to={i.to} className="sidebar-item" end={i.to==='/'} onClick={()=>setNavOpen(false)}><span>{i.icon}</span><span>{i.label}</span></NavLink>))}</div>))}
       </aside>
+      <div className={`sidebar-scrim${navOpen?' show':''}`} onClick={()=>setNavOpen(false)} aria-hidden="true"/>
       <main className="main-content">
         <header className="header">
-          <div style={{flex:1}}>
+          <button type="button" className="nav-toggle" aria-label={navOpen?'关闭导航':'打开导航'} aria-expanded={navOpen} aria-controls="app-nav" onClick={()=>setNavOpen(v=>!v)}>{navOpen?'✕':'☰'}</button>
+          <div style={{flex:1,minWidth:0}}>
             <div className="header-date">{dayjs().format('YYYY年M月D日 dddd')}</div>
           </div>
           <div className="user-area" ref={menuRef} onClick={()=>setUm(v=>!v)}>

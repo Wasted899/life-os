@@ -70,7 +70,7 @@ export default function TodoToolbar({
             <button className="btn btn-primary" style={{padding:'4px 10px'}} onClick={() => onDateChange(todayISO())}>回到今天</button>
           )}
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
           {view === 'list' && (
             <select className="select" style={{width:110}} value={groupBy} onChange={e => onGroupByChange(e.target.value as TodoGroupBy)}>
               {GROUPS.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}

@@ -266,8 +266,8 @@ export default function TodosPage() {
   }
 
   return (
-    <div style={{display:'flex',gap:16}}>
-      <div style={{width:180,flexShrink:0}}>
+    <div className="todos-layout">
+      <div className="todos-side">
         <TodoSidebar
           lists={lists}
           categories={categories}
@@ -282,7 +282,7 @@ export default function TodosPage() {
         />
       </div>
 
-      <div style={{flex:1}}>
+      <div className="todos-main">
         <div className="card">
           <TodoToolbar
             date={date}

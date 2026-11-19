@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTheme } from '../../context/ThemeContext'
 import { sanitizeBackgroundImage } from '../../core/theme'
 import type { Theme } from '../../core/types'
+import { applyTheme } from './applyTheme'
 import {
   compressImageFile,
   oversizeThemeIds,
@@ -44,33 +45,74 @@ const createFromCurrent = (current: Theme): ThemeDraft => ({
 })
 
 export default function ThemePanel() {
-  const { themes, theme: current, setTheme, addTheme, updateTheme, deleteTheme } = useTheme()
+  const { themes, theme: current, hiddenPresets, setTheme, addTheme, updateTheme, deleteTheme, restorePreset } =
+    useTheme()
   const [draft, setDraft] = useState<ThemeDraft>(() => createThemeDraft())
   const [editingId, setEditingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  /** 实时预览：只改变量、不写盘；退出面板/取消时回滚到进来前的正式主题 */
+  const [previewing, setPreviewing] = useState(false)
+  const previewingRef = useRef(false)
+  const currentRef = useRef(current)
+  currentRef.current = current
+
+  const previewTheme = useMemo(() => {
+    const safeImage = draft.bgImage ? sanitizeBackgroundImage(draft.bgImage) : null
+    return buildThemeFromDraft({ ...draft, bgImage: safeImage || '' }, { id: '__preview__' })
+  }, [draft])
+
+  useLayoutEffect(() => {
+    if (!previewing) return
+    applyTheme(previewTheme)
+  }, [previewing, previewTheme])
+
+  useEffect(
+    () => () => {
+      if (previewingRef.current) applyTheme(currentRef.current)
+    },
+    [],
+  )
+
+  const stopPreview = () => {
+    if (!previewingRef.current) return
+    previewingRef.current = false
+    setPreviewing(false)
+    applyTheme(currentRef.current)
+  }
+
   const oversize = useMemo(() => new Set(oversizeThemeIds(themes)), [themes])
   const customCount = themes.filter(item => item.custom).length
   const imageChars = draft.bgImage ? draft.bgImage.length : 0
 
-  const patch = (next: Partial<ThemeDraft>) => setDraft(value => ({ ...value, ...next }))
-  const patchVars = (next: ThemeDraft['vars']) =>
+  const patch = (next: Partial<ThemeDraft>) => {
+    previewingRef.current = true
+    setPreviewing(true)
+    setDraft(value => ({ ...value, ...next }))
+  }
+  const patchVars = (next: ThemeDraft['vars']) => {
+    previewingRef.current = true
+    setPreviewing(true)
     setDraft(value => ({ ...value, vars: { ...value.vars, ...next } }))
+  }
 
   const resetEditor = () => {
+    stopPreview()
     setEditingId(null)
     setDraft(createThemeDraft())
   }
 
   const beginCreate = () => {
+    stopPreview()
     setNotice(null)
     setEditingId(null)
     setDraft(createFromCurrent(current))
   }
 
   const beginEdit = (theme: Theme) => {
+    stopPreview()
     setNotice(null)
     setEditingId(theme.id)
     setDraft(createThemeDraft(theme))
@@ -143,6 +185,9 @@ export default function ThemePanel() {
           ? '已保存修改'
           : '已创建并切换到新主题',
     })
+    // 已落库并切换，预览使命结束；不再回滚旧主题
+    previewingRef.current = false
+    setPreviewing(false)
     if (editingId) {
       setDraft(createThemeDraft(next))
     } else {
@@ -151,14 +196,28 @@ export default function ThemePanel() {
   }
 
   const remove = (theme: Theme) => {
-    if (!window.confirm(`删除主题「${theme.name}」？`)) return
+    const isPreset = theme.custom === false
+    const message = isPreset
+      ? `删除内置预设「${theme.name}」？删除后可在下方「已隐藏的预设」里恢复。`
+      : `删除主题「${theme.name}」？`
+    if (!window.confirm(message)) return
+    stopPreview()
     const result = deleteTheme(theme.id)
     if (!result.ok) {
       setNotice({ type: 'error', text: result.reason || '删除失败' })
       return
     }
     if (editingId === theme.id) resetEditor()
-    setNotice({ type: 'ok', text: '已删除' })
+    setNotice({ type: 'ok', text: isPreset ? '已隐藏该预设，可随时恢复' : '已删除' })
+  }
+
+  const restore = (theme: Theme) => {
+    const result = restorePreset(theme.id)
+    setNotice(
+      result.ok
+        ? { type: 'ok', text: `已恢复「${theme.name}」` }
+        : { type: 'error', text: result.reason || '恢复失败' },
+    )
   }
 
   return (
@@ -177,12 +236,16 @@ export default function ThemePanel() {
             <div
               key={theme.id}
               className={`theme-card${active ? ' theme-card-active' : ''}`}
-              onClick={() => setTheme(theme.id)}
+              onClick={() => {
+                stopPreview()
+                setTheme(theme.id)
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={event => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
+                  stopPreview()
                   setTheme(theme.id)
                 }
               }}
@@ -197,7 +260,7 @@ export default function ThemePanel() {
                   className="theme-thumb-card"
                   style={{
                     background: theme.vars?.surface || '#ffffff',
-                    opacity: Math.max(0.72, theme.vars?.cardAlpha ?? theme.overlay ?? 0.88),
+                    opacity: Math.max(0.62, theme.vars?.cardAlpha ?? theme.overlay ?? 0.88),
                   }}
                 />
                 <span className="theme-thumb-accent" style={{ background: theme.primary }} />
@@ -209,10 +272,8 @@ export default function ThemePanel() {
                 {over && <span className="theme-badge theme-badge-danger">图片超限</span>}
               </div>
 
-              {theme.custom === false ? (
-                <span className="theme-meta">预设</span>
-              ) : (
-                <div className="theme-actions">
+              <div className="theme-actions">
+                {theme.custom !== false && (
                   <button
                     type="button"
                     className="theme-link"
@@ -223,27 +284,45 @@ export default function ThemePanel() {
                   >
                     编辑
                   </button>
-                  <button
-                    type="button"
-                    className="theme-link theme-link-danger"
-                    onClick={event => {
-                      event.stopPropagation()
-                      remove(theme)
-                    }}
-                  >
-                    删除
-                  </button>
-                </div>
-              )}
+                )}
+                <button
+                  type="button"
+                  className="theme-link theme-link-danger"
+                  onClick={event => {
+                    event.stopPropagation()
+                    remove(theme)
+                  }}
+                >
+                  {theme.custom === false ? '删除预设' : '删除'}
+                </button>
+              </div>
             </div>
           )
         })}
       </div>
 
+      {hiddenPresets.length > 0 && (
+        <div className="theme-hidden">
+          <span className="theme-meta">已隐藏 {hiddenPresets.length} 个内置预设</span>
+          <div className="theme-hidden-list">
+            {hiddenPresets.map(theme => (
+              <button
+                key={theme.id}
+                type="button"
+                className="theme-link"
+                onClick={() => restore(theme)}
+              >
+                恢复「{theme.name}」
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="theme-editor">
         <div className="theme-editor-head">
           <span className="theme-editor-title">{editingId ? '编辑主题' : '新建主题'}</span>
-          <span className="theme-meta">已保存 {customCount} 套自定义</span>
+          <span className="theme-meta">改动即时预览（不写盘）· 已保存 {customCount} 套自定义</span>
         </div>
 
         <div className="theme-form">
@@ -252,7 +331,7 @@ export default function ThemePanel() {
             <input
               className="input"
               value={draft.name}
-              placeholder="例如：新艾利都夜行"
+              placeholder="例如：夜航霓虹"
               onChange={event => patch({ name: event.target.value })}
             />
           </label>

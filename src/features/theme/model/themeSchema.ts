@@ -7,8 +7,8 @@
  */
 import type { Theme, ThemeVars } from '../../../core/types'
 
-/** 有背景图时卡片不透明度的下限，避免文字压在花纹上看不清 */
-export const MIN_CARD_ALPHA_WITH_IMAGE = 0.72
+/** 有背景图时卡片不透明度的下限：再低会看不清文字，0.62 配合毛玻璃已足够通透 */
+export const MIN_CARD_ALPHA_WITH_IMAGE = 0.62
 
 export type CssVars = Record<string, string>
 
@@ -47,7 +47,7 @@ function darken(color: string, ratio: number): string {
 }
 
 const SYSTEM_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif'
-/** 绝区零式标题：系统自带的重型无衬线，不打包字体 */
+/** 高对比标题：系统自带的重型无衬线，不打包字体 */
 const IMPACT_FONT = 'Impact, "Arial Black", "Arial Narrow Bold", "Haettenschweiler", sans-serif'
 
 const motionTokens = (motion: ThemeVars['motion']): { fast: string; base: string; ease: string } =>
@@ -70,7 +70,9 @@ export function themeToCssVars(theme: Theme): CssVars {
 
   const rawCardAlpha = clamp(asNumber(vars.cardAlpha, overlay), 0.5, 1)
   const cardAlpha = hasImage ? Math.max(MIN_CARD_ALPHA_WITH_IMAGE, rawCardAlpha) : rawCardAlpha
-  const sidebarOverlay = clamp(asNumber(vars.sidebarOverlay, overlay), 0.3, 1)
+  const storedSidebarOverlay = clamp(asNumber(vars.sidebarOverlay, overlay), 0.3, 1)
+  // 背景图模式：侧栏放弃原色，改用中性深色玻璃，让背景图色调透出来而不是贴一块色块
+  const sidebarOverlay = hasImage ? clamp(storedSidebarOverlay, 0.34, 0.58) : storedSidebarOverlay
 
   const luminance = hexLuminance(bg)
   const lightText = vars.textTone ? vars.textTone === 'light' : luminance !== null && luminance < 0.45
@@ -108,6 +110,8 @@ export function themeToCssVars(theme: Theme): CssVars {
     '--bg': bg,
     '--bg-rgb': hexToRgb(bg) || '240,244,248',
     '--sidebar-rgb': hexToRgb(theme.sidebar) || '30,58,95',
+    // 有背景图时侧栏用中性黑玻璃，无图时保持侧栏原色
+    '--sidebar-glass-rgb': hasImage ? '8,8,10' : (hexToRgb(theme.sidebar) || '30,58,95'),
     '--surface': surface,
     '--surface-rgb': hexToRgb(surface) || '255,255,255',
     '--pattern-rgb': lightText ? '255,255,255' : '15,23,42',
@@ -115,9 +119,9 @@ export function themeToCssVars(theme: Theme): CssVars {
     '--primary-ink': primaryInk,
     '--accent': vars.accent || theme.primary,
     '--card-alpha': String(cardAlpha),
-    '--card-blur': `${Math.round(blur * 0.5)}px`,
+    '--card-blur': `${hasImage ? Math.max(10, Math.round(blur * 0.75)) : Math.round(blur * 0.5)}px`,
     '--sidebar-overlay': String(sidebarOverlay),
-    '--sidebar-blur': `${blur}px`,
+    '--sidebar-blur': `${hasImage ? Math.max(14, blur) : blur}px`,
     '--texture': texture,
     '--grid-size': '24px',
     '--grid-alpha': gridOn ? '0.06' : '0',
@@ -136,6 +140,15 @@ export function themeToCssVars(theme: Theme): CssVars {
     '--card-edge': geometric ? '0px' : '1px',
     '--accent-block': geometric ? '4px' : '2px',
     '--field-border': geometric ? '2px' : '1px',
+    // 圆角规范：大卡片 / 小卡片与控件 / 按钮，三档全部变量化
+    '--radius-card': geometric ? '2px' : '14px',
+    '--radius-control': geometric ? '2px' : '10px',
+    '--radius-btn': geometric ? '2px' : '8px',
+    // 去重阴影：只留 1px 极浅边框 + 几乎没有的弥散
+    '--shadow-card': geometric ? 'none' : '0 1px 2px rgba(15,23,42,.05)',
+    '--card-pad': geometric ? '20px' : '24px',
+    '--title-size': geometric ? '20px' : '18px',
+    '--text-strong': lightText ? '#ffffff' : '#0f172a',
     '--font-body': SYSTEM_FONT,
     '--font-display': vars.heading === 'impact' ? IMPACT_FONT : SYSTEM_FONT,
     '--glitch-shadow': vars.glitch

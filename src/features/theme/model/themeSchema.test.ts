@@ -47,13 +47,15 @@ describe('themeToCssVars 新变量', () => {
     expect(vars['--surface']).toBe('#ffffff')
   })
 
-  it('有背景图时 cardAlpha 不低于 0.72', () => {
+  it('有背景图时 cardAlpha 不低于下限，侧栏切中性玻璃', () => {
     const vars = themeToCssVars({
       ...blue,
       bgImage: 'https://example.com/a.jpg',
-      vars: { cardAlpha: 0.5 },
+      vars: { cardAlpha: 0.5, sidebarOverlay: 0.95 },
     })
     expect(Number(vars['--card-alpha'])).toBe(MIN_CARD_ALPHA_WITH_IMAGE)
+    expect(vars['--sidebar-glass-rgb']).toBe('8,8,10')
+    expect(Number(vars['--sidebar-overlay'])).toBeLessThanOrEqual(0.58)
   })
 
   it('质感参数落到对应变量', () => {
@@ -97,10 +99,10 @@ describe('themeToCssVars 新变量', () => {
   })
 })
 
-describe('绝区零风格变量（新艾利都）', () => {
-  const eridu: Theme = {
-    id: 'eridu',
-    name: '新艾利都',
+describe('高对比风格变量（霓虹黑）', () => {
+  const neon: Theme = {
+    id: 'neon',
+    name: '霓虹黑',
     primary: '#FDE047',
     sidebar: '#0B0B0F',
     bg: '#101014',
@@ -121,7 +123,7 @@ describe('绝区零风格变量（新艾利都）', () => {
   }
 
   it('霓虹黄主色自动配深色前景，避免按钮白字失守 AA', () => {
-    expect(themeToCssVars(eridu)['--on-primary']).toBe('#0a0a0a')
+    expect(themeToCssVars(neon)['--on-primary']).toBe('#0a0a0a')
     expect(themeToCssVars(blue)['--on-primary']).toBe('#ffffff')
   })
 
@@ -132,7 +134,7 @@ describe('绝区零风格变量（新艾利都）', () => {
   })
 
   it('cut>0 输出斜切裁剪与几何粗边', () => {
-    const vars = themeToCssVars(eridu)
+    const vars = themeToCssVars(neon)
     expect(vars['--radius']).toBe('2px')
     expect(vars['--card-clip']).toContain('polygon(')
     expect(vars['--btn-clip']).toContain('polygon(')
@@ -150,7 +152,7 @@ describe('绝区零风格变量（新艾利都）', () => {
   })
 
   it('斜纹质感、Impact 标题、Glitch 阴影与系统字体栈', () => {
-    const vars = themeToCssVars(eridu)
+    const vars = themeToCssVars(neon)
     expect(Number(vars['--stripe-alpha'])).toBeGreaterThan(0)
     expect(vars['--grid-alpha']).toBe('0')
     expect(vars['--font-display']).toContain('Impact')
