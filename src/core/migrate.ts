@@ -24,6 +24,7 @@ import { uid } from './storage'
 import { MODULE_ORDER, normalizeDisabledModules } from './modules'
 import { normalizeReviewKey, reviewCreatedAt } from './reviewKey'
 import { sanitizeAll, sanitizeMemoItems } from '../lib/sanitize'
+import { sanitizeExternalUrl } from '../lib/externalUrl'
 import {
   isGoalLevel,
   legacyTypeOfLevel,
@@ -1297,10 +1298,14 @@ function normalizeGuide(item: unknown): GuideEntry | null {
   }
   if (hasValue(item.icon)) guide.icon = asText(item.icon)
   if (Array.isArray(item.links)) {
-    const links = item.links
-      .filter(isPlainObject)
-      .map((link) => ({ label: asText(link.label), url: asText(link.url) }))
-      .filter((link) => !!link.label && !!link.url)
+    const links: NonNullable<GuideEntry['links']> = []
+    for (const link of item.links) {
+      if (!isPlainObject(link)) continue
+      const label = asText(link.label)
+      // 归一时只放行 http/https 绝对地址，非法链接直接丢弃
+      const url = sanitizeExternalUrl(link.url)
+      if (label && url) links.push({ label, url })
+    }
     if (links.length) guide.links = links
   }
   return guide

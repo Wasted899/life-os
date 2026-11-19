@@ -54,14 +54,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     id: 'guide',
     title: '指南',
     items: [
-      { to: '/guide/baoyan', label: '保研指南', icon: '🎓', module: 'guide' },
-      { to: '/guide/intern', label: '实习攻略', icon: '💼', module: 'guide' },
-      { to: '/guide/contest', label: '竞赛指南', icon: '🏆', module: 'guide' },
-      { to: '/guide/coding', label: '编程路线', icon: '💻', module: 'guide' },
-      { to: '/guide/cet4', label: '四级备考', icon: '📖', module: 'guide' },
-      { to: '/guide/kaoyan', label: '考研指南', icon: '📚', module: 'guide' },
-      { to: '/guide/scholarship', label: '奖学金攻略', icon: '🏅', module: 'guide' },
-      { to: '/guide/tips', label: '避坑提醒', icon: '⚠️', module: 'guide' },
+      { to: '/guide/baoyan', label: '保研', icon: '🎓', module: 'guide' },
+      { to: '/guide/intern', label: '实习', icon: '💼', module: 'guide' },
+      { to: '/guide/kaoyan', label: '考研', icon: '📚', module: 'guide' },
+      { to: '/guide/scholarship', label: '奖学金', icon: '🏅', module: 'guide' },
     ],
   },
   {

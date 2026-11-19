@@ -1,36 +1,353 @@
-import {useParams,Link} from 'react-router-dom'
-const guides:Record<string,{title:string;icon:string;content:string[]}>={
-  baoyan:{title:'保研指南',icon:'🎓',content:['保研全称"推荐优秀应届本科毕业生免试攻读硕士学位研究生"，不需要参加全国统考。','保研资格获取：成绩排名（核心）+ 科研竞赛 + 英语水平 + 综合素质。','哈师大软件工程保研率约5-8%，需保持专业前10%才有机会。','关键时间线：大三上学期准备材料 → 大三暑假参加夏令营 → 大四上学期预推免 → 9月28日国家系统开放确认。','目标院校：江浙沪地区（浙大、复旦、上交、南大、东南、同济），北京（北大、清华、北航、北邮），广东（中山、华南理工）。','军事科学院等科研院所也招收推免生，竞争相对较小。','准备材料：个人陈述、简历、成绩单、获奖证书、科研经历、英语成绩（六级500+为佳）、推荐信。','夏令营是保研的"提前批"，大三下学期3-5月报名，6-7月参营，表现优秀可获"优营"资格。']},
-  intern:{title:'实习攻略',icon:'💼',content:['软件工程实习分为：日常实习（学期中）和暑期实习（大三暑假，转正率最高）。','大厂暑期实习通常大三上学期9-11月开始招聘（提前批），12月-次年3月正式批。','目标公司：互联网大厂（字节、阿里、腾讯、美团、京东）、游戏公司（米哈游、网易、腾讯互娱）、国企银行。','简历核心：教育背景+项目经历（2-3个核心项目）+技术栈+竞赛获奖+开源贡献。','笔试：算法题（LeetCode中等）+计算机基础（操作系统、网络、数据库）。','面试：3-4轮技术面+1轮HR面，每轮45-60分钟。','游戏开发方向：掌握Unity/Unreal引擎、C++/C#、图形学基础，作品集很重要。','实习薪资：大厂日薪200-400元，另有房补餐补，暑期实习2-3个月可赚1-2万。']},
-  contest:{title:'竞赛指南',icon:'🏆',content:['高含金量竞赛：ACM-ICPC、蓝桥杯、中国大学生计算机设计大赛、"互联网+"、"挑战杯"、数学建模。','ACM-ICPC：三人一队，5小时解8-12道算法题，区域赛金奖可保研加分。','蓝桥杯：个人赛，C/C++/Java/Python组，省赛→国赛，相对容易获奖。','数学建模：国赛（9月）、美赛（2月），三人一队，三天完成论文。','"互联网+"：偏项目和商业，需要完整产品+商业计划书+路演答辩。','竞赛时间规划：大一大二打基础，大三冲高级别。','建议加入学校ACM集训队，有专门训练和指导。','保研综测加分：国家级竞赛加5-10分，省级加2-5分。']},
-  coding:{title:'编程路线',icon:'💻',content:['大一：C/C++基础→数据结构与算法→Python入门→前端基础。','大二：Java/Go后端→数据库（MySQL/Redis）→操作系统→计算机网络→做1-2个完整项目。','大三：深入方向（后端/前端/游戏/AI/安全）→刷LeetCode（300+题）→准备暑期实习。','游戏开发方向：C++→Unity（C#）或Unreal（C++）→图形学→做2-3个Demo。','推荐资源：B站（宋浩数学、翁恺C语言）、LeetCode、GitHub、掘金、知乎。','开发环境：VS Code或Visual Studio，Git版本控制，Linux基础命令。','项目经验：从跟着教程做→自己独立做→参与开源项目。','英语能力：技术文档和Stack Overflow都是英文，四级必过，六级尽量500+。']},
-  cet4:{title:'四级备考',icon:'📖',content:['大学英语四级总分710分，425分及格，每年6月和12月考试。','题型：听力（35%）+阅读（35%）+写作翻译（30%）。','听力：每天精听30分钟（真题听力），注意同义替换。','阅读：仔细阅读（分值最高）先做，长篇匹配次之，选词填空最后。','写作：背3-5套模板，考前每周写1篇。','翻译：中国文化/历史/经济话题，积累常用词汇。','词汇：用"不背单词"APP，每天50-100个，考前过2遍核心词汇。','真题：近5年真题至少做2遍，第一遍计时，第二遍分析错题。']},
-  kaoyan:{title:'考研指南',icon:'📚',content:['考研全称全国硕士研究生统一招生考试，每年12月底笔试，次年3-4月复试。','考试科目：政治（100分）+英语一/二（100分）+数学一/二/三（150分）+专业课（150分），总分500分。','计算机专业通常考数学一+408计算机学科专业基础（数据结构+组成原理+操作系统+计算机网络）。','复习规划：大三上学期确定目标院校→大三下学期基础复习→暑假强化→大四上学期冲刺→12月考试。','院校选择：985竞争激烈（复试线350+），211性价比高（300-330），双非保底（过国家线）。','学硕vs专硕：学硕（3年，偏学术，考英语一数学一），专硕（2-3年，偏应用，考英语二数学二，招生更多）。','复习资料：数学（张宇/汤家凤/李永乐）、英语（黄皮书真题、唐迟阅读）、政治（肖秀荣1000题+肖四肖八）、408（王道四本书）。','复试：笔试（专业课）+面试（英语口语+专业问答+项目经历）+机试（部分学校），初试占比50-70%。']},
-  scholarship:{title:'奖学金攻略',icon:'🏅',content:['大学奖学金主要分为：国家奖学金（8000元/年，专业前1-2%）、国家励志奖学金（5000元/年，家庭困难+成绩优秀）、校级奖学金（一等1000-3000、二等500-1500、三等200-800）、社会奖学金（企业/校友捐赠）。','国家奖学金评选：成绩排名（专业前5%有资格）+综合素质（竞赛、科研、学生工作）+答辩表现，每年9-10月评选。','校级奖学金：主要看成绩排名（GPA），一等前5%、二等前15%、三等前30%，部分学院加综测分。','保研奖学金：部分学校对保研学生有新生奖学金（5000-20000元），研究生阶段还有国家助学金（6000元/年全覆盖）+学业奖学金（8000-12000元/年覆盖80%）+导师补贴。','申请技巧：大一就了解学院评选细则，保持高GPA是基础，积极参加竞赛和科研活动加分，学生干部和社会实践也有加分。','国家助学金：家庭经济困难学生可申请，每年3000元（分10个月发放），需提交家庭经济困难证明，覆盖比例约20-30%。','助学贷款：家庭经济困难可申请国家助学贷款，本专科每年最高12000元，在校期间利息由财政补贴，毕业后开始还本付息，不要借校园贷！','兼职收入：家教（每小时50-150元）、校内勤工助学（每小时15-25元）、技术兼职（接外包项目），注意不要影响学业。']},
-  tips:{title:'避坑提醒',icon:'⚠️',content:['不要挂科！挂科会直接失去保研资格和奖学金资格，哪怕补考通过也不行。','警惕"培训贷"：任何让你贷款交学费的编程培训都要三思，很多是骗局。','不要只学不练：编程是实践学科，看10小时视频不如写1小时代码。','不要盲目跟风：别人学AI你也学AI，先了解自己兴趣和优势，选一个方向深入。','社团不要加太多：1-2个感兴趣的即可，太多会占用学习时间。','游戏适度：大学自由时间多，不要沉迷游戏影响学业。','提前规划：大一就了解保研/考研/就业的要求，早准备早主动。','注意身体健康：东北冬天很冷，注意保暖；干眼症注意用眼，每用眼1小时休息10分钟。','人际关系：大学室友关系很重要，互相尊重理解；但不要为了合群放弃自己的目标。','消费理性：大学生活费有限，记账是好习惯，不要超前消费和借贷。','不要相信"包过""保过"：四六级、考研的包过班都是智商税，踏踏实实复习才是正道。']},
-}
-const guideList=Object.entries(guides).map(([id,g])=>({id,...g}))
-export default function GuidePage(){
-  const{type}=useParams()
-  const g=guides[type||'baoyan']||guides.baoyan
-  return(
-    <div style={{display:'flex',gap:16}}>
-      <div style={{width:180,flexShrink:0}}>
-        <div className="card" style={{padding:12}}>
-          <div style={{fontWeight:700,marginBottom:10,fontSize:14}}>📚 指南分类</div>
-          {guideList.map(item=>(
-            <Link key={item.id} to={`/guide/${item.id}`} style={{display:'block',padding:'8px 10px',borderRadius:6,marginBottom:4,textDecoration:'none',color:type===item.id?'#fff':'#334155',background:type===item.id?'var(--primary)':'transparent',fontSize:13}}>
-              {item.icon} {item.title}
-            </Link>
-          ))}
-        </div>
+import { useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import type { GuideEntry, GuideLink } from '../../core/types'
+import { uid } from '../../core/storage'
+import { Modal } from '../../core/ui/Modal'
+import { externalDomain } from '../../lib/externalUrl'
+import {
+  GUIDE_CATEGORIES,
+  GUIDE_CATEGORY_IDS,
+  OTHER_CATEGORY,
+  buildGuideFromDraft,
+  categoryLabelOf,
+  categoryOf,
+  draftFromGuide,
+  emptyGuideDraft,
+  guideDomains,
+  guideIntro,
+  guidePrimaryLink,
+  type GuideDraft,
+} from './model/guideSchema'
+import { readStoredGuides, removeGuide, upsertGuide, writeStoredGuides } from './model/guideStorage'
+import './guide.css'
+
+const isOtherCategory = (id: string) => id === OTHER_CATEGORY
+
+export default function GuidePage() {
+  const { type } = useParams()
+  const [guides, setGuides] = useState<GuideEntry[]>(readStoredGuides)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<GuideDraft | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<GuideEntry | null>(null)
+
+  const hasOther = guides.some(item => isOtherCategory(categoryOf(item)))
+  const active = type === OTHER_CATEGORY
+    ? OTHER_CATEGORY
+    : type && GUIDE_CATEGORY_IDS.includes(type)
+      ? type
+      : GUIDE_CATEGORIES[0].id
+  const activeMeta = GUIDE_CATEGORIES.find(item => item.id === active)
+  const visible = guides.filter(item => categoryOf(item) === active)
+  const detail = detailId ? guides.find(item => item.id === detailId) ?? null : null
+
+  const persist = (next: GuideEntry[]) => {
+    writeStoredGuides(next)
+    setGuides(next)
+  }
+
+  const openNew = () => {
+    setEditingId(null)
+    setDraft(emptyGuideDraft(active))
+    setError('')
+    setDetailId(null)
+  }
+
+  const openEdit = (entry: GuideEntry) => {
+    setEditingId(entry.id)
+    setDraft(draftFromGuide(entry))
+    setError('')
+    setDetailId(null)
+  }
+
+  const closeEditor = () => {
+    setDraft(null)
+    setEditingId(null)
+    setError('')
+  }
+
+  const saveEditor = () => {
+    if (!draft) return
+    const result = buildGuideFromDraft(draft, editingId ?? uid())
+    if (!result.entry) {
+      setError(result.error)
+      return
+    }
+    persist(upsertGuide(guides, result.entry))
+    closeEditor()
+  }
+
+  const updateDraft = (patch: Partial<GuideDraft>) =>
+    setDraft(current => (current ? { ...current, ...patch } : current))
+
+  const updateLink = (index: number, patch: Partial<GuideLink>) =>
+    setDraft(current => current
+      ? { ...current, links: current.links.map((link, i) => (i === index ? { ...link, ...patch } : link)) }
+      : current)
+
+  const addLink = () => setDraft(current => current
+    ? { ...current, links: [...current.links, { label: '', url: '' }] }
+    : current)
+
+  const removeLink = (index: number) => setDraft(current => current
+    ? { ...current, links: current.links.filter((_, i) => i !== index) }
+    : current)
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    persist(removeGuide(guides, pendingDelete.id))
+    setPendingDelete(null)
+    setDetailId(null)
+  }
+
+  return (
+    <div className="guide-page">
+      <div className="gd-layout">
+        <aside className="gd-side">
+          <div className="card gd-side-card">
+            <div className="gd-side-title">📚 指南分类</div>
+            <nav className="gd-nav">
+              {GUIDE_CATEGORIES.map(item => (
+                <Link
+                  key={item.id}
+                  to={`/guide/${item.id}`}
+                  className={`gd-nav-item${active === item.id ? ' is-active' : ''}`}
+                >
+                  <span className="gd-nav-icon">{item.icon}</span>
+                  <span className="gd-nav-text">
+                    <strong>{item.label}</strong>
+                    <small>{item.hint}</small>
+                  </span>
+                </Link>
+              ))}
+              {hasOther && (
+                <Link
+                  to={`/guide/${OTHER_CATEGORY}`}
+                  className={`gd-nav-item${active === OTHER_CATEGORY ? ' is-active' : ''}`}
+                >
+                  <span className="gd-nav-icon">📁</span>
+                  <span className="gd-nav-text">
+                    <strong>其他</strong>
+                    <small>旧分类条目原样保留</small>
+                  </span>
+                </Link>
+              )}
+            </nav>
+          </div>
+        </aside>
+
+        <section className="gd-main">
+          <div className="gd-head">
+            <div>
+              <h1 className="gd-title">
+                {activeMeta ? `${activeMeta.icon} ${activeMeta.label}` : '📁 其他'}
+              </h1>
+              <p className="gd-sub">
+                {activeMeta?.hint ?? '旧分类条目原样保留，编辑时可选择归入四个主分类'}
+              </p>
+            </div>
+            <button className="btn btn-primary" type="button" onClick={openNew}>新建条目</button>
+          </div>
+
+          {visible.length === 0 ? (
+            <div className="card gd-empty">
+              <div className="gd-empty-title">这里还没有条目</div>
+              <p>把常用的官网、B 站、知乎等外部入口收进来，标题 + 一句话简介 + 外链即可。</p>
+              <button className="btn btn-outline" type="button" onClick={openNew}>添加第一条</button>
+            </div>
+          ) : (
+            <div className="gd-grid">
+              {visible.map(item => {
+                const primary = guidePrimaryLink(item)
+                const domains = guideDomains(item)
+                const intro = guideIntro(item)
+                const inner = (
+                  <>
+                    <div className="gd-card-title">
+                      {item.icon ? <span className="gd-card-icon">{item.icon}</span> : null}
+                      <span>{item.title}</span>
+                    </div>
+                    <p className="gd-card-intro">{intro || '暂无简介'}</p>
+                    <div className="gd-card-domains">
+                      {domains.length
+                        ? domains.slice(0, 3).map(domain => (
+                          <span className="gd-domain" key={domain}>{domain}</span>
+                        ))
+                        : <span className="gd-hint">暂无外链</span>}
+                      {domains.length > 3 ? <span className="gd-hint">+{domains.length - 3}</span> : null}
+                    </div>
+                  </>
+                )
+                return (
+                  <article className="gd-card" key={item.id}>
+                    {primary ? (
+                      <a
+                        className="gd-card-main"
+                        href={primary.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={primary.url}
+                      >
+                        {inner}
+                      </a>
+                    ) : (
+                      <div className="gd-card-main">{inner}</div>
+                    )}
+                    <div className="gd-card-foot">
+                      <span className="gd-badge">{categoryLabelOf(categoryOf(item))}</span>
+                      <div className="gd-actions">
+                        <button className="gd-mini" type="button" onClick={() => setDetailId(item.id)}>详情</button>
+                        <button className="gd-mini" type="button" onClick={() => openEdit(item)}>编辑</button>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </section>
       </div>
-      <div style={{flex:1}}>
-        <div className="card">
-          <div className="card-title"><span style={{fontSize:20}}>{g.icon} {g.title}</span><span style={{fontSize:12,color:'#94a3b8'}}>共{g.content.length}条</span></div>
-          <div style={{lineHeight:1.8}}>{g.content.map((p,i)=>(<div key={i} style={{marginBottom:14,paddingLeft:16,borderLeft:'3px solid var(--primary)'}}><span style={{color:'#334155'}}>{p}</span></div>))}</div>
-        </div>
-      </div>
+
+      <Modal
+        open={!!detail}
+        title={detail ? `${detail.icon ?? ''} ${detail.title}`.trim() : ''}
+        onClose={() => setDetailId(null)}
+        actions={detail ? (
+          <>
+            <button className="btn btn-ghost" type="button" onClick={() => setDetailId(null)}>关闭</button>
+            <button className="btn btn-danger" type="button" onClick={() => setPendingDelete(detail)}>删除</button>
+            <button className="btn btn-primary" type="button" onClick={() => openEdit(detail)}>编辑</button>
+          </>
+        ) : null}
+      >
+        {detail ? (
+          <div className="gd-detail">
+            <div className="gd-detail-meta">
+              <span className="gd-badge">{categoryLabelOf(categoryOf(detail))}</span>
+            </div>
+            {detail.body.some(line => line.trim()) ? (
+              detail.body.filter(line => line.trim()).map((line, index) => (
+                <p className="gd-detail-line" key={index}>{line}</p>
+              ))
+            ) : (
+              <p className="gd-hint">暂无简介</p>
+            )}
+            {detail.links?.length ? (
+              <ul className="gd-links">
+                {detail.links.map((link, index) => (
+                  <li key={`${link.url}-${index}`}>
+                    <a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}</a>
+                    <span className="gd-link-domain">{externalDomain(link.url)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="gd-hint">暂无外链</p>
+            )}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={draft !== null}
+        title={editingId ? '编辑条目' : '新建条目'}
+        onClose={closeEditor}
+        actions={(
+          <>
+            <button className="btn btn-ghost" type="button" onClick={closeEditor}>取消</button>
+            <button className="btn btn-primary" type="button" onClick={saveEditor}>保存</button>
+          </>
+        )}
+      >
+        {draft ? (
+          <div className="gd-form">
+            <label className="gd-field">
+              <span>标题</span>
+              <input
+                className="input"
+                value={draft.title}
+                onChange={event => updateDraft({ title: event.target.value })}
+                placeholder="例如：中国研究生招生信息网"
+              />
+            </label>
+            <div className="gd-field-row">
+              <label className="gd-field">
+                <span>分类</span>
+                <select
+                  className="select"
+                  value={draft.category}
+                  onChange={event => updateDraft({ category: event.target.value })}
+                >
+                  {GUIDE_CATEGORIES.map(item => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                  {!GUIDE_CATEGORY_IDS.includes(draft.category) ? (
+                    <option value={draft.category}>其他（{draft.category}）</option>
+                  ) : null}
+                </select>
+              </label>
+              <label className="gd-field gd-field-icon">
+                <span>图标</span>
+                <input
+                  className="input"
+                  value={draft.icon}
+                  onChange={event => updateDraft({ icon: event.target.value })}
+                  placeholder="🎓"
+                  maxLength={4}
+                />
+              </label>
+            </div>
+            <label className="gd-field">
+              <span>一句话简介</span>
+              <textarea
+                className="textarea"
+                value={draft.intro}
+                onChange={event => updateDraft({ intro: event.target.value })}
+                placeholder="这个入口能解决什么问题？"
+              />
+            </label>
+            <div className="gd-field">
+              <span>外链（仅支持 http/https 绝对地址）</span>
+              {draft.links.map((link, index) => (
+                <div className="gd-link-row" key={index}>
+                  <input
+                    className="input"
+                    value={link.label}
+                    onChange={event => updateLink(index, { label: event.target.value })}
+                    placeholder="链接名称"
+                  />
+                  <input
+                    className="input"
+                    value={link.url}
+                    onChange={event => updateLink(index, { url: event.target.value })}
+                    placeholder="https://"
+                  />
+                  <button className="gd-mini gd-mini-danger" type="button" onClick={() => removeLink(index)}>
+                    移除
+                  </button>
+                </div>
+              ))}
+              <button className="btn btn-outline" type="button" onClick={addLink}>+ 添加外链</button>
+            </div>
+            {error ? <div className="gd-error">{error}</div> : null}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={!!pendingDelete}
+        title="删除条目"
+        onClose={() => setPendingDelete(null)}
+        actions={(
+          <>
+            <button className="btn btn-ghost" type="button" onClick={() => setPendingDelete(null)}>取消</button>
+            <button className="btn btn-danger" type="button" onClick={confirmDelete}>删除</button>
+          </>
+        )}
+      >
+        <p>确定删除「{pendingDelete?.title ?? ''}」？删除后不会自动恢复，需要时请重新新建。</p>
+      </Modal>
     </div>
   )
 }
