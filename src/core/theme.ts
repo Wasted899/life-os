@@ -28,9 +28,10 @@ export function sanitizeBackgroundImage(raw: unknown): string | null {
   return sanitizeExternalUrl(text)
 }
 
-const TEXTURES = new Set(['none', 'grid', 'noise', 'both'])
+const TEXTURES = new Set(['none', 'grid', 'noise', 'both', 'stripes'])
 const MOTIONS = new Set(['snappy', 'calm'])
 const TEXT_TONES = new Set(['dark', 'light'])
+const HEADINGS = new Set(['system', 'impact'])
 
 export function normalizeThemeVars(raw: unknown): ThemeVars | undefined {
   if (!isPlainObject(raw)) return undefined
@@ -52,6 +53,10 @@ export function normalizeThemeVars(raw: unknown): ThemeVars | undefined {
   if (typeof raw.textTone === 'string' && TEXT_TONES.has(raw.textTone)) {
     vars.textTone = raw.textTone as ThemeVars['textTone']
   }
+  if (typeof raw.heading === 'string' && HEADINGS.has(raw.heading)) {
+    vars.heading = raw.heading as ThemeVars['heading']
+  }
+  if (typeof raw.glitch === 'boolean') vars.glitch = raw.glitch
   return Object.keys(vars).length ? vars : undefined
 }
 

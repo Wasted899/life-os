@@ -716,7 +716,7 @@ export function DataProvider({children}:{children:ReactNode}){
     if(!loggedIn||!isCloudMode||!supabase)throw new Error('未登录或未配置云端')
     setUploading(true)
     const logs:string[]=[]
-    const log=(msg:string)=>{console.log(`[上传] ${msg}`);logs.push(msg)}
+    const log=(msg:string)=>{logs.push(msg)}
     try{
       // 第0步：验证登录状态和用户ID
       log('=== 开始上传 ===')

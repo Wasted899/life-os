@@ -1,1 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#2563eb"/><text x="50" y="68" font-size="50" text-anchor="middle" fill="white">📋</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#0B0B0F"/>
+  <polygon points="14,14 72,14 86,28 86,86 28,86 14,72" fill="#FDE047"/>
+  <polygon points="86,16 92,22 92,58 86,52" fill="#22D3EE"/>
+  <text x="53" y="50" dominant-baseline="central" text-anchor="middle" font-family="Impact, 'Arial Black', Arial, sans-serif" font-weight="900" font-size="56" fill="#22D3EE">P</text>
+  <text x="50" y="47" dominant-baseline="central" text-anchor="middle" font-family="Impact, 'Arial Black', Arial, sans-serif" font-weight="900" font-size="56" fill="#0B0B0F">P</text>
+</svg>

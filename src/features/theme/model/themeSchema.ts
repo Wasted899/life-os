@@ -37,6 +37,19 @@ function hexLuminance(color: string): number | null {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
+/** 与黑色混合：浅色霓虹在浅底上做文字/描边时的降饱和方案 */
+function darken(color: string, ratio: number): string {
+  const rgb = hexToRgb(color)
+  if (!rgb) return color
+  const [r, g, b] = rgb.split(',').map(Number)
+  const mix = (value: number) => Math.round(value * ratio).toString(16).padStart(2, '0')
+  return `#${mix(r)}${mix(g)}${mix(b)}`
+}
+
+const SYSTEM_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif'
+/** 绝区零式标题：系统自带的重型无衬线，不打包字体 */
+const IMPACT_FONT = 'Impact, "Arial Black", "Arial Narrow Bold", "Haettenschweiler", sans-serif'
+
 const motionTokens = (motion: ThemeVars['motion']): { fast: string; base: string; ease: string } =>
   motion === 'calm'
     ? { fast: '180ms', base: '280ms', ease: 'cubic-bezier(.4,0,.2,1)' }
@@ -65,7 +78,22 @@ export function themeToCssVars(theme: Theme): CssVars {
   const texture = vars.texture ?? 'none'
   const gridOn = texture === 'grid' || texture === 'both'
   const noiseOn = texture === 'noise' || texture === 'both'
+  const stripeOn = texture === 'stripes'
   const motion = motionTokens(vars.motion)
+
+  const cut = Math.round(clamp(asNumber(vars.cut, 0), 0, 24))
+  /** 有斜切角即视为几何风格：粗边色块、直角、Impact 标题 */
+  const geometric = cut > 0
+  const surface = vars.surface || '#ffffff'
+  const primaryLum = hexLuminance(theme.primary)
+  const surfaceLum = hexLuminance(surface)
+  // 霓虹黄这类高亮主色必须配深色文字，否则 AA 直接失守
+  const onPrimary = primaryLum !== null && primaryLum > 0.55 ? '#0a0a0a' : '#ffffff'
+  // 浅底 + 浅主色时，文字/描边改用压暗版本，保证看得见
+  const primaryInk =
+    surfaceLum !== null && surfaceLum > 0.5 && primaryLum !== null && primaryLum > 0.45
+      ? darken(theme.primary, 0.42)
+      : theme.primary
 
   return {
     // ---- 兼容层：旧 6 变量 ----
@@ -73,16 +101,18 @@ export function themeToCssVars(theme: Theme): CssVars {
     '--sidebar-bg': theme.sidebar,
     '--overlay': String(overlay),
     '--blur': `${blur}px`,
-    '--radius': '12px',
+    '--radius': geometric ? '2px' : '12px',
     '--bg-image': hasImage ? `url(${theme.bgImage})` : 'none',
 
-    // ---- 新变量：T4 质感消费 ----
+    // ---- 新变量：质感消费 ----
     '--bg': bg,
     '--bg-rgb': hexToRgb(bg) || '240,244,248',
     '--sidebar-rgb': hexToRgb(theme.sidebar) || '30,58,95',
-    '--surface': vars.surface || '#ffffff',
-    '--surface-rgb': hexToRgb(vars.surface || '#ffffff') || '255,255,255',
+    '--surface': surface,
+    '--surface-rgb': hexToRgb(surface) || '255,255,255',
     '--pattern-rgb': lightText ? '255,255,255' : '15,23,42',
+    '--on-primary': onPrimary,
+    '--primary-ink': primaryInk,
     '--accent': vars.accent || theme.primary,
     '--card-alpha': String(cardAlpha),
     '--card-blur': `${Math.round(blur * 0.5)}px`,
@@ -92,7 +122,25 @@ export function themeToCssVars(theme: Theme): CssVars {
     '--grid-size': '24px',
     '--grid-alpha': gridOn ? '0.06' : '0',
     '--noise-alpha': noiseOn ? '0.035' : '0',
-    '--cut': `${Math.round(clamp(asNumber(vars.cut, 0), 0, 24))}px`,
+    '--stripe-alpha': stripeOn ? '0.055' : '0',
+    '--cut': `${cut}px`,
+    '--card-clip': geometric
+      ? `polygon(0 0,calc(100% - ${cut}px) 0,100% ${cut}px,100% 100%,${cut}px 100%,0 calc(100% - ${cut}px))`
+      : 'none',
+    '--btn-clip': geometric
+      ? `polygon(0 0,calc(100% - ${Math.min(cut, 12)}px) 0,100% ${Math.min(cut, 12)}px,100% 100%,0 100%)`
+      : 'none',
+    '--sidebar-clip': geometric
+      ? `polygon(0 0,100% 0,100% calc(100% - ${cut * 2}px),calc(100% - ${cut * 2}px) 100%,0 100%)`
+      : 'none',
+    '--card-edge': geometric ? '0px' : '1px',
+    '--accent-block': geometric ? '4px' : '2px',
+    '--field-border': geometric ? '2px' : '1px',
+    '--font-body': SYSTEM_FONT,
+    '--font-display': vars.heading === 'impact' ? IMPACT_FONT : SYSTEM_FONT,
+    '--glitch-shadow': vars.glitch
+      ? '2px 0 rgba(34,211,238,.65), -2px 0 rgba(244,114,182,.65)'
+      : 'none',
     '--mono-numbers': vars.monoNumbers ? '1' : '0',
     '--motion-fast': motion.fast,
     '--motion-base': motion.base,

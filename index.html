@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#f0f4f8"/>
 <title>个人规划助手</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"/>
 <script>
 /* 首屏同步注入主题变量：必须在 CSS 之后、React 之前执行，避免刷新闪白/闪蓝。
    映射规则与 src/features/theme/model/themeSchema.ts 保持一致（该文件是唯一真源）。 */
@@ -29,9 +30,12 @@
       green: { primary: '#047857', sidebar: '#065f46', bg: '#f0fdf4', overlay: 0.88, blur: 12 },
       purple: { primary: '#7c3aed', sidebar: '#4c1d95', bg: '#faf5ff', overlay: 0.88, blur: 12 },
       dark: { primary: '#6366f1', sidebar: '#0f172a', bg: '#1e293b', overlay: 0.85, blur: 16, vars: { surface: '#1e293b', cardAlpha: 0.92 } },
-      rhodes: {
-        primary: '#2f6f83', sidebar: '#12181f', bg: '#eef2f4', overlay: 0.9, blur: 14,
-        vars: { surface: '#f7fafb', cardAlpha: 0.9, texture: 'both', accent: '#57c7d4', cut: 10, monoNumbers: true, motion: 'calm' }
+      eridu: {
+        primary: '#FDE047', sidebar: '#0B0B0F', bg: '#101014', overlay: 0.92, blur: 10,
+        vars: {
+          surface: '#1A1A21', cardAlpha: 0.94, sidebarOverlay: 0.96, texture: 'stripes', accent: '#22D3EE',
+          cut: 14, monoNumbers: true, motion: 'snappy', textTone: 'light', heading: 'impact', glitch: true
+        }
       }
     };
     var id = read('p_theme');
@@ -66,6 +70,16 @@
       var values = parts.split(',');
       return (0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2]) / 255;
     };
+    var darken = function (color, ratio) {
+      var parts = rgb(color);
+      if (!parts) return color;
+      var values = parts.split(',');
+      var hex = function (value) {
+        var text = Math.round(Number(value) * ratio).toString(16);
+        return text.length < 2 ? '0' + text : text;
+      };
+      return '#' + hex(values[0]) + hex(values[1]) + hex(values[2]);
+    };
 
     var vars = theme.vars || {};
     var bg = theme.bg || '#f0f4f8';
@@ -78,9 +92,22 @@
     var texture = vars.texture || 'none';
     var gridOn = texture === 'grid' || texture === 'both';
     var noiseOn = texture === 'noise' || texture === 'both';
+    var stripeOn = texture === 'stripes';
     var tone = luminance(bg);
     var lightText = vars.textTone ? vars.textTone === 'light' : tone !== null && tone < 0.45;
     var calm = vars.motion === 'calm';
+    var surface = vars.surface || '#ffffff';
+    var primaryLum = luminance(theme.primary);
+    var surfaceLum = luminance(surface);
+    var onPrimary = primaryLum !== null && primaryLum > 0.55 ? '#0a0a0a' : '#ffffff';
+    var primaryInk = surfaceLum !== null && surfaceLum > 0.5 && primaryLum !== null && primaryLum > 0.45
+      ? darken(theme.primary, 0.42)
+      : (theme.primary || '#2563eb');
+    var cut = Math.round(clamp(number(vars.cut, 0), 0, 24));
+    var geometric = cut > 0;
+    var impact = vars.heading === 'impact';
+    var systemFont = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif';
+    var impactFont = 'Impact, "Arial Black", "Arial Narrow Bold", "Haettenschweiler", sans-serif';
 
     var root = document.documentElement.style;
     var set = function (name, value) { root.setProperty(name, String(value)); };
@@ -89,14 +116,16 @@
     set('--sidebar-bg', theme.sidebar || '#1e3a5f');
     set('--overlay', overlay);
     set('--blur', blur + 'px');
-    set('--radius', '12px');
+    set('--radius', geometric ? '2px' : '12px');
     set('--bg-image', hasImage ? 'url(' + theme.bgImage + ')' : 'none');
     set('--bg', bg);
     set('--bg-rgb', rgb(bg) || '240,244,248');
     set('--sidebar-rgb', rgb(theme.sidebar) || '30,58,95');
-    set('--surface', vars.surface || '#ffffff');
-    set('--surface-rgb', rgb(vars.surface || '#ffffff') || '255,255,255');
+    set('--surface', surface);
+    set('--surface-rgb', rgb(surface) || '255,255,255');
     set('--pattern-rgb', lightText ? '255,255,255' : '15,23,42');
+    set('--on-primary', onPrimary);
+    set('--primary-ink', primaryInk);
     set('--accent', vars.accent || theme.primary || '#2563eb');
     set('--card-alpha', cardAlpha);
     set('--card-blur', Math.round(blur * 0.5) + 'px');
@@ -106,7 +135,18 @@
     set('--grid-size', '24px');
     set('--grid-alpha', gridOn ? '0.06' : '0');
     set('--noise-alpha', noiseOn ? '0.035' : '0');
-    set('--cut', Math.round(clamp(number(vars.cut, 0), 0, 24)) + 'px');
+    set('--stripe-alpha', stripeOn ? '0.055' : '0');
+    set('--cut', cut + 'px');
+    var btnCut = Math.min(cut, 12);
+    set('--card-clip', geometric ? 'polygon(0 0,calc(100% - ' + cut + 'px) 0,100% ' + cut + 'px,100% 100%,' + cut + 'px 100%,0 calc(100% - ' + cut + 'px))' : 'none');
+    set('--btn-clip', geometric ? 'polygon(0 0,calc(100% - ' + btnCut + 'px) 0,100% ' + btnCut + 'px,100% 100%,0 100%)' : 'none');
+    set('--sidebar-clip', geometric ? 'polygon(0 0,100% 0,100% calc(100% - ' + cut * 2 + 'px),calc(100% - ' + cut * 2 + 'px) 100%,0 100%)' : 'none');
+    set('--card-edge', geometric ? '0px' : '1px');
+    set('--accent-block', geometric ? '4px' : '2px');
+    set('--field-border', geometric ? '2px' : '1px');
+    set('--font-body', systemFont);
+    set('--font-display', impact ? impactFont : systemFont);
+    set('--glitch-shadow', vars.glitch ? '2px 0 rgba(34,211,238,.65), -2px 0 rgba(244,114,182,.65)' : 'none');
     set('--mono-numbers', vars.monoNumbers ? '1' : '0');
     set('--motion-fast', calm ? '180ms' : '120ms');
     set('--motion-base', calm ? '280ms' : '180ms');

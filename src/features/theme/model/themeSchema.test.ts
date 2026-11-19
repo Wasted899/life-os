@@ -97,6 +97,68 @@ describe('themeToCssVars 新变量', () => {
   })
 })
 
+describe('绝区零风格变量（新艾利都）', () => {
+  const eridu: Theme = {
+    id: 'eridu',
+    name: '新艾利都',
+    primary: '#FDE047',
+    sidebar: '#0B0B0F',
+    bg: '#101014',
+    overlay: 0.92,
+    blur: 10,
+    custom: false,
+    vars: {
+      surface: '#1A1A21',
+      texture: 'stripes',
+      accent: '#22D3EE',
+      cut: 14,
+      monoNumbers: true,
+      motion: 'snappy',
+      textTone: 'light',
+      heading: 'impact',
+      glitch: true,
+    },
+  }
+
+  it('霓虹黄主色自动配深色前景，避免按钮白字失守 AA', () => {
+    expect(themeToCssVars(eridu)['--on-primary']).toBe('#0a0a0a')
+    expect(themeToCssVars(blue)['--on-primary']).toBe('#ffffff')
+  })
+
+  it('浅底 + 浅主色时把主色压暗给文字/描边用', () => {
+    const ink = themeToCssVars({ ...blue, primary: '#FDE047' })['--primary-ink']
+    expect(ink).not.toBe('#FDE047')
+    expect(ink).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it('cut>0 输出斜切裁剪与几何粗边', () => {
+    const vars = themeToCssVars(eridu)
+    expect(vars['--radius']).toBe('2px')
+    expect(vars['--card-clip']).toContain('polygon(')
+    expect(vars['--btn-clip']).toContain('polygon(')
+    expect(vars['--sidebar-clip']).toContain('polygon(')
+    expect(vars['--card-edge']).toBe('0px')
+    expect(vars['--accent-block']).toBe('4px')
+  })
+
+  it('cut=0 时全部回落 none，旧主题不被裁剪', () => {
+    const vars = themeToCssVars({ ...blue, vars: { cut: 0 } })
+    expect(vars['--card-clip']).toBe('none')
+    expect(vars['--btn-clip']).toBe('none')
+    expect(vars['--sidebar-clip']).toBe('none')
+    expect(vars['--accent-block']).toBe('2px')
+  })
+
+  it('斜纹质感、Impact 标题、Glitch 阴影与系统字体栈', () => {
+    const vars = themeToCssVars(eridu)
+    expect(Number(vars['--stripe-alpha'])).toBeGreaterThan(0)
+    expect(vars['--grid-alpha']).toBe('0')
+    expect(vars['--font-display']).toContain('Impact')
+    expect(vars['--font-body']).toContain('system-ui')
+    expect(vars['--glitch-shadow']).not.toBe('none')
+  })
+})
+
 describe('草稿与构建', () => {
   it('createThemeDraft 复制已有主题字段', () => {
     const draft = createThemeDraft(blue)

@@ -23,6 +23,7 @@ const TEXTURES = [
   { value: 'grid', label: '网格' },
   { value: 'noise', label: '噪点' },
   { value: 'both', label: '网格 + 噪点' },
+  { value: 'stripes', label: '斜纹（斑马线）' },
 ] as const
 
 const MOTIONS = [
@@ -251,7 +252,7 @@ export default function ThemePanel() {
             <input
               className="input"
               value={draft.name}
-              placeholder="例如：罗德岛夜班"
+              placeholder="例如：新艾利都夜行"
               onChange={event => patch({ name: event.target.value })}
             />
           </label>
@@ -352,6 +353,18 @@ export default function ThemePanel() {
             />
           </label>
 
+          <label className="theme-field">
+            <span>斜切角 {draft.vars.cut ?? 0}px（0 = 直角零裁剪）</span>
+            <input
+              type="range"
+              min="0"
+              max="24"
+              step="1"
+              value={draft.vars.cut ?? 0}
+              onChange={event => patchVars({ cut: Number(event.target.value) })}
+            />
+          </label>
+
           <div className="theme-field-row">
             <label className="theme-field">
               <span>质感</span>
@@ -388,6 +401,22 @@ export default function ThemePanel() {
                 onChange={event => patchVars({ monoNumbers: event.target.checked })}
               />
               <span>等宽数字</span>
+            </label>
+            <label className="theme-switch">
+              <input
+                type="checkbox"
+                checked={draft.vars.heading === 'impact'}
+                onChange={event => patchVars({ heading: event.target.checked ? 'impact' : 'system' })}
+              />
+              <span>Impact 标题</span>
+            </label>
+            <label className="theme-switch">
+              <input
+                type="checkbox"
+                checked={!!draft.vars.glitch}
+                onChange={event => patchVars({ glitch: event.target.checked })}
+              />
+              <span>Glitch 标题</span>
             </label>
           </div>
         </div>
